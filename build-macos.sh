@@ -24,58 +24,12 @@ echo "Installing Python dependencies..."
 python3 -m pip install -r requirements.txt
 python3 -m pip install pyinstaller
 
-# Download Ollama binary if not present
-if [ ! -f "ollama" ]; then
-    echo "Downloading Ollama binary..."
-    LATEST_TAG=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-    echo "Latest version: $LATEST_TAG"
-    # Prefer arch-specific darwin builds; fall back to generic darwin/macos naming
-    DOWNLOAD_URL=""
-    for p in "darwin.*arm64" "darwin.*amd64" "darwin" "macos"; do
-        DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/ollama/ollama/releases/latest" \
-            | grep '"browser_download_url"' \
-            | sed -E 's/.*"([^"]+)".*/\1/' \
-            | grep -iE "$p" || true)
-        if [ -n "$DOWNLOAD_URL" ]; then
-            DOWNLOAD_URL=$(echo "$DOWNLOAD_URL" | head -n 1)
-            break
-        fi
-    done
-
-    if [ -z "$DOWNLOAD_URL" ]; then
-        DOWNLOAD_URL="https://github.com/ollama/ollama/releases/download/${LATEST_TAG}/ollama-darwin"
-    fi
-
-    TMPDIR=$(mktemp -d)
-    curl -L "$DOWNLOAD_URL" -o "$TMPDIR/ollama_asset"
-    # If the asset appears to be an archive, extract it and try to find the binary
-    if file "$TMPDIR/ollama_asset" | grep -qi "zip\|gzip\|tar"; then
-        echo "Archive detected; extracting to $TMPDIR"
-        mkdir -p "$TMPDIR/ollama_unpack"
-        if unzip -l "$TMPDIR/ollama_asset" >/dev/null 2>&1; then
-            unzip -o "$TMPDIR/ollama_asset" -d "$TMPDIR/ollama_unpack"
-        else
-            tar -xf "$TMPDIR/ollama_asset" -C "$TMPDIR/ollama_unpack" || true
-        fi
-        echo "Contents of $TMPDIR/ollama_unpack:"
-        ls -la "$TMPDIR/ollama_unpack" || true
-        find "$TMPDIR/ollama_unpack" -type f -iname '*ollama*' -print -exec cp {} ollama \; -quit || true
-    else
-        mv "$TMPDIR/ollama_asset" ollama
-    fi
-    # Cleanup
-    rm -rf "$TMPDIR" || true
-    chmod +x ollama
-    echo "✓ Ollama downloaded"
-else
-    echo "✓ Ollama binary already exists"
-fi
-### Download Ollama binary if not present
+# Download Ollama binary if not present (use shared ci script for consistency)
 if [ ! -f "ollama" ]; then
     echo "Downloading Ollama binary using ci/download-ollama.sh"
     bash ci/download-ollama.sh
 else
-    echo "✓ Ollama binary already exists"
+    echo " Ollama binary already exists"
 fi
 
 # Build the app
