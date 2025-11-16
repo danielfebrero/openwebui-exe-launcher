@@ -36,17 +36,16 @@ jobs:
           $latestTag = $latest.tag_name
           Write-Host "Downloading Ollama $latestTag"
 
-          # Prefer a windows-amd64 zip asset, but fall back to any asset that contains windows
-          $asset = $latest.assets | Where-Object { $_.name -match 'windows' -and $_.name -match 'zip' } | Select-Object -First 1
-          if (-not $asset) {
-            # Fallback: try amd64 zip specifically
-            $asset = $latest.assets | Where-Object { $_.name -match 'windows' } | Select-Object -First 1
-          }
+          # Prefer any windows release asset. Keep asset name for extension detection.
+          $asset = $latest.assets | Where-Object { $_.name -match 'windows' } | Select-Object -First 1
           if ($asset) {
+            Write-Host "Selected asset: $($asset.name)"
             $url = $asset.browser_download_url
+            $assetName = $asset.name
           } else {
             Write-Host "WARNING: No windows asset found in release; falling back to default name"
-            $url = "https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.zip"
+            $assetName = "ollama-windows-amd64.zip"
+            $url = "https://github.com/ollama/ollama/releases/download/$latestTag/$assetName"
           }
 
           # Retry download up to 3 times
@@ -54,15 +53,30 @@ jobs:
           for ($i = 1; $i -le $maxRetries; $i++) {
             try {
               Write-Host "Download attempt $i/$maxRetries..."
-              Invoke-WebRequest -Uri $url -OutFile "ollama.zip" -ErrorAction Stop
-              Expand-Archive -Path "ollama.zip" -DestinationPath "ollama_temp" -Force
-              
-              # Find ollama.exe in extracted files (may be in subdirectory)
-              $ollamaExe = Get-ChildItem -Path "ollama_temp" -Filter "ollama.exe" -Recurse | Select-Object -First 1
+              # Save the downloaded file using asset name extension if available
+              $ext = [System.IO.Path]::GetExtension($assetName)
+              $downloadPath = "ollama_download$ext"
+              Invoke-WebRequest -Uri $url -OutFile $downloadPath -ErrorAction Stop
+
+              # If archive is a ZIP, expand and search for any Windows EXE containing 'ollama'
+              if ($downloadPath -match '\.zip$') {
+                Expand-Archive -Path $downloadPath -DestinationPath "ollama_temp" -Force
+                $ollamaExe = Get-ChildItem -Path "ollama_temp" -Recurse -File | Where-Object { $_.Name -match 'ollama' -and $_.Extension -ieq '.exe' } | Select-Object -First 1
+              } else {
+                # Not a zip; try to locate 'ollama' exe in the current working folder or as the download
+                $ollamaExe = $null
+                if ($downloadPath -match '\.exe$') {
+                  $ollamaExe = Get-Item -Path $downloadPath -ErrorAction SilentlyContinue
+                }
+                if (-not $ollamaExe) {
+                  $ollamaExe = Get-ChildItem -Path '.' -Filter '*ollama*.exe' -Recurse | Select-Object -First 1
+                }
+              }
               if ($ollamaExe) {
                 Copy-Item $ollamaExe.FullName -Destination "ollama.exe" -Force
-                Remove-Item "ollama_temp" -Recurse -Force
-                Remove-Item "ollama.zip" -Force
+                # Remove temporary files if present
+                if (Test-Path "ollama_temp") { Remove-Item "ollama_temp" -Recurse -Force }
+                if (Test-Path $downloadPath) { Remove-Item $downloadPath -Force }
                 Write-Host "✓ ollama.exe downloaded successfully"
                 break
               } else {
@@ -86,11 +100,11 @@ jobs:
           if (Test-Path "dist\OpenWebUI-Ollama-Portable\OpenWebUI-Ollama-Portable.exe") {
             Write-Host "✓ Build successful"
             # Verify ollama.exe exists in the packaged directory
-            if (Test-Path "dist\OpenWebUI-Ollama-Portable\ollama.exe") {
-              Write-Host "✓ ollama.exe found in package"
-            } else {
-              Write-Host "WARNING: ollama.exe not found in packaged directory - the build may be incomplete"
-            }
+              if (Test-Path "dist\OpenWebUI-Ollama-Portable\ollama.exe") {
+                Write-Host "✓ ollama.exe found in package"
+              } else {
+                throw "ERROR: ollama.exe not found in packaged directory - build is incomplete"
+              }
           } else {
             throw "ERROR: Build failed - executable not found"
           }
@@ -145,6 +159,7 @@ jobs:
           Write-Host "Cleaning up build artifacts..."
           Remove-Item -Path "ollama.exe" -ErrorAction SilentlyContinue
           Remove-Item -Path "ollama.zip" -ErrorAction SilentlyContinue
+          Remove-Item -Path "ollama_download*" -ErrorAction SilentlyContinue
           Remove-Item -Path "ollama_temp" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "build" -Recurse -Force -ErrorAction SilentlyContinue

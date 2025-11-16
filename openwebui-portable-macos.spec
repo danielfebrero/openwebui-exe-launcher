@@ -25,7 +25,9 @@ added_binaries = []
 if Path(ollama_binary).exists():
     added_binaries.append((ollama_binary, '.'))
 else:
-    print(f"WARNING: {ollama_binary} not found. Build will fail at runtime!")
+    raise SystemExit(
+        f"ERROR: {ollama_binary} not found. Please place the Ollama binary next to the spec before building."
+    )
 
 # Hidden imports required by open-webui
 hidden_imports = [
@@ -46,11 +48,11 @@ datas = added_files + open_webui_datas
 # Merge collected binaries with our added Ollama binary
 binaries = open_webui_binaries + added_binaries
 
-try:
-    base_path = Path(__file__).parent
-except NameError:
-    # Some build systems may not set __file__, fall back and keep spec working
-    base_path = Path.cwd()
+# Resolve the base path where the spec file is located. Some hosted
+# environments may not set `__file__`, so we fall back to the current
+# working directory if necessary. Use an inline expression to avoid
+# potential parsing differences in restricted build environments.
+base_path = Path(__file__).parent if '__file__' in globals() else Path.cwd()
 
 
 a = Analysis(

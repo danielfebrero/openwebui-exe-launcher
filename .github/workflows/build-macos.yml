@@ -115,7 +115,8 @@ jobs:
             echo "Found bundled ollama binary inside app:" 
             ls -l "dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama"
           else
-            echo "WARNING: ollama binary not found inside the .app bundle" 
+            echo "ERROR: ollama binary not found inside the .app bundle"
+            exit 1
           fi
 
       - name: Create README for macOS
