@@ -44,26 +44,7 @@ jobs:
       - name: Download Ollama binary (latest)
         shell: pwsh
         run: |
-          $latest = Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest"
-          $latestTag = $latest.tag_name
-          Write-Host "Downloading Ollama $latestTag"
-
-          # Prefer windows release assets, and try multiple candidates if the first one doesn't contain an exe.
-          - name: Download Ollama binary (latest)
-            shell: pwsh
-            run: |
-              pwsh -NoProfile -File ci/download-ollama-windows.ps1
-          if (Test-Path "dist\OpenWebUI-Ollama-Portable\OpenWebUI-Ollama-Portable.exe") {
-            Write-Host "✓ Build successful"
-            # Verify ollama.exe exists in the packaged directory
-              if (Test-Path "dist\OpenWebUI-Ollama-Portable\ollama.exe") {
-                Write-Host "✓ ollama.exe found in package"
-              } else {
-                throw "ERROR: ollama.exe not found in packaged directory - build is incomplete"
-              }
-          } else {
-            throw "ERROR: Build failed - executable not found"
-          }
+          pwsh -NoProfile -File ci/download-ollama-windows.ps1
 
       - name: Create portable ZIP package
         shell: pwsh
