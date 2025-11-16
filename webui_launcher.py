@@ -5,6 +5,7 @@ This script is bundled with PyInstaller to enable open-webui execution.
 """
 import sys
 import os
+from pathlib import Path
 from typing import Any
 
 main_func = None
@@ -31,6 +32,10 @@ try:
 
 except ImportError as e:
     print(f"[WebUI Init] Could not import open_webui.main.app: {e}")
+    if getattr(e, "name", "") == "numpy" or "numpy" in str(e):
+        print(
+            "[WebUI Init] Missing dependency detected: numpy. Add it to requirements and rebuild the portable bundle."
+        )
 
     # Fallback: try to import the app from other common locations
     try:
