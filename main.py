@@ -20,6 +20,8 @@ except ImportError:
 ollama_process = None
 webui_process = None
 
+WEBUI_CHILD_FLAG = "--webui-child"
+
 
 def get_bundled_path(filename):
     """Get path to bundled resource, handling PyInstaller frozen state."""
@@ -40,6 +42,17 @@ def get_app_dir():
     return Path(__file__).parent
 
 
+def build_self_command(extra_args=None):
+    """Return command list that relaunches this launcher with extra args."""
+    cmd = [sys.executable]
+    if not getattr(sys, "frozen", False):
+        cmd.append(str(Path(__file__).resolve()))
+
+    if extra_args:
+        cmd.extend(extra_args)
+    return cmd
+
+
 def is_port_in_use(port):
     """Check if a port is already in use."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -54,7 +67,7 @@ def cleanup_processes():
     """Terminate all child processes cleanly."""
     global ollama_process, webui_process
 
-    if webui_process:
+    if webui_process and webui_process.poll() is None:
         try:
             webui_process.terminate()
             webui_process.wait(timeout=5)
@@ -65,7 +78,7 @@ def cleanup_processes():
             except:
                 pass
 
-    if ollama_process:
+    if ollama_process and ollama_process.poll() is None:
         try:
             ollama_process.terminate()
             ollama_process.wait(timeout=5)
@@ -82,6 +95,18 @@ def get_ollama_binary():
     if sys.platform == "win32":
         return get_bundled_path("ollama.exe")
     return get_bundled_path("ollama")
+
+
+def run_webui_child_mode():
+    """Run Open WebUI inside the current process when invoked as a child."""
+    try:
+        from webui_launcher import run_webui_server
+    except ImportError as exc:
+        raise RuntimeError(
+            "Failed to import bundled WebUI launcher."
+        ) from exc
+
+    run_webui_server()
 
 
 def run_ollama():
@@ -122,8 +147,6 @@ def run_ollama():
             [ollama_binary, "serve"],
             cwd=str(ollama_dir),
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
         )
     except Exception as e:
         raise RuntimeError(f"Failed to start Ollama process: {e}")
@@ -141,11 +164,9 @@ def run_ollama():
 
         # Check if process crashed
         if ollama_process.poll() is not None:
-            stderr = ollama_process.stderr.read().decode("utf-8", errors="ignore")
             raise RuntimeError(
-                f"Ollama process terminated unexpectedly.\n"
-                f"Exit code: {ollama_process.returncode}\n"
-                f"Error output: {stderr[:500]}"
+                "Ollama process terminated unexpectedly. "
+                "See console output for details."
             )
 
         time.sleep(1)
@@ -179,9 +200,8 @@ def run_webui():
     print(f"Data directory: {data_dir}")
     print("Starting Open WebUI...")
 
-    # Get path to bundled open-webui script
+    # Ensure bundled launcher exists before spawning child process
     webui_script = get_bundled_path("webui_launcher.py")
-
     if not Path(webui_script).exists():
         raise FileNotFoundError(
             f"WebUI launcher not found at: {webui_script}\n"
@@ -189,17 +209,9 @@ def run_webui():
         )
 
     try:
-        # Use sys.executable which works correctly in all scenarios:
-        # - When running as script: points to Python interpreter
-        # - When frozen (PyInstaller): points to the bundled Python interpreter
-        #   (Windows: embedded in exe, macOS: embedded in .app bundle)
-        python_exe = sys.executable
-
         webui_process = subprocess.Popen(
-            [python_exe, webui_script],
+            build_self_command([WEBUI_CHILD_FLAG]),
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
         )
     except Exception as e:
         raise RuntimeError(f"Failed to start WebUI process: {e}")
@@ -221,11 +233,9 @@ def run_webui():
 
         # Check if process crashed
         if webui_process.poll() is not None:
-            stderr = webui_process.stderr.read().decode("utf-8", errors="ignore")
             raise RuntimeError(
-                f"WebUI process terminated unexpectedly.\n"
-                f"Exit code: {webui_process.returncode}\n"
-                f"Error output: {stderr[:500]}"
+                "WebUI process terminated unexpectedly. "
+                "See console output for details."
             )
 
         time.sleep(1)
@@ -249,7 +259,8 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 
-if __name__ == "__main__":
+def launcher_main():
+    """Primary entry point for the portable launcher."""
     # Register cleanup handlers
     atexit.register(cleanup_processes)
     signal.signal(signal.SIGINT, signal_handler)
@@ -282,3 +293,15 @@ if __name__ == "__main__":
     finally:
         cleanup_processes()
         print("Shutdown complete.")
+
+
+if __name__ == "__main__":
+    if WEBUI_CHILD_FLAG in sys.argv:
+        sys.argv.remove(WEBUI_CHILD_FLAG)
+        try:
+            run_webui_child_mode()
+        except Exception as exc:
+            print(f"\nERROR: {exc}")
+            sys.exit(1)
+    else:
+        launcher_main()

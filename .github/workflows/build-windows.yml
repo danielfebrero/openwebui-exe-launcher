@@ -51,8 +51,8 @@ jobs:
           pyinstaller --onedir `
             --console `
             --name "OpenWebUI-Ollama-Portable" `
-            --add-binary "ollama.exe:." `
-            --add-data "webui_launcher.py:." `
+            --add-binary "ollama.exe;." `
+            --add-data "webui_launcher.py;." `
             --hidden-import "open_webui" `
             --hidden-import "sqlite3" `
             --hidden-import "uvicorn" `
