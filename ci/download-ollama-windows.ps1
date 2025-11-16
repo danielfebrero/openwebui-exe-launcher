@@ -18,7 +18,16 @@ Write-Host "Downloading Ollama $LatestTag"
 # Candidate patterns
 $priorityPatterns = @('windows.*amd64','windows.*64','windows')
 
+ # Gather candidates that look like windows builds
 $assetCandidates = @()
+foreach ($p in $priorityPatterns) {
+    $assetCandidates += $latest.assets | Where-Object { $_.name -match $p }
+}
+$assetCandidates = $assetCandidates | Select-Object -Unique
+
+# Exclude GPU/library-specific bundles that do not contain an executable, like ROCm/CUDA builds
+# These builds often contain only native libraries (DLL/so/hsaco) and not the `ollama.exe` runtime
+$assetCandidates = $assetCandidates | Where-Object { $_.name -notmatch 'rocm|cuda|hip|ggml|lib' }
 foreach ($p in $priorityPatterns) {
     $assetCandidates += $latest.assets | Where-Object { $_.name -match $p }
 }
@@ -80,6 +89,26 @@ foreach ($asset in $assetCandidates) {
         }
     }
     if ($found) { break }
+}
+
+if (-not $found) {
+    Write-Host "NOTICE: None of the candidate assets contained an executable - trying fallback to the canonical Windows asset name (ollama-windows-amd64.zip)"
+    try {
+        $fallbackUrl = "https://github.com/ollama/ollama/releases/download/$LatestTag/ollama-windows-amd64.zip"
+        Invoke-WebRequest -Uri $fallbackUrl -OutFile "ollama_download.zip" -ErrorAction Stop
+        if (-not (Test-Path "ollama_temp")) { New-Item -ItemType Directory -Path "ollama_temp" | Out-Null }
+        Expand-Archive -Path "ollama_download.zip" -DestinationPath "ollama_temp" -Force
+        $ollamaExe = Get-ChildItem -Path "ollama_temp" -Recurse -File | Where-Object { $_.Name -match 'ollama' -and $_.Extension -ieq '.exe' } | Select-Object -First 1
+        if ($ollamaExe) {
+            Copy-Item $ollamaExe.FullName -Destination "ollama.exe" -Force
+            Remove-Item "ollama_temp" -Recurse -Force
+            Remove-Item "ollama_download.zip" -Force
+            Write-Host "✓ ollama.exe downloaded successfully (fallback asset)"
+            $found = $true
+        }
+    } catch {
+        Write-Host "Fallback attempt failed: $_"
+    }
 }
 
 if (-not $found) { throw "ERROR: Failed to download ollama.exe: none of the windows assets contained an executable (tried $($assetCandidates.Count) candidate(s))." }
