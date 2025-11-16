@@ -70,11 +70,14 @@ jobs:
               # If it's a ZIP or tar(ball), try to extract to find a contained 'ollama' binary
               if file "$TEMP_DIR/ollama_asset" | grep -qi "zip\|gzip\|tar"; then
                 echo "Archive downloaded; extracting to temp for scan"
+                mkdir -p "$TEMP_DIR/ollama_unpack"
                 if unzip -l "$TEMP_DIR/ollama_asset" >/dev/null 2>&1; then
                   unzip -o "$TEMP_DIR/ollama_asset" -d "$TEMP_DIR/ollama_unpack"
                 else
                   tar -xf "$TEMP_DIR/ollama_asset" -C "$TEMP_DIR/ollama_unpack" || true
                 fi
+                echo "Contents of $TEMP_DIR/ollama_unpack:"
+                ls -la "$TEMP_DIR/ollama_unpack" || true
                 find "$TEMP_DIR/ollama_unpack" -type f -iname '*ollama*' -print -exec cp {} "$OLLAMA_DEBUG_DIR/" \; -quit || true
               else
                 # It's already a binary, move/rename for PyInstaller

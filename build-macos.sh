@@ -51,11 +51,14 @@ if [ ! -f "ollama" ]; then
     # If the asset appears to be an archive, extract it and try to find the binary
     if file "$TMPDIR/ollama_asset" | grep -qi "zip\|gzip\|tar"; then
         echo "Archive detected; extracting to $TMPDIR"
+        mkdir -p "$TMPDIR/ollama_unpack"
         if unzip -l "$TMPDIR/ollama_asset" >/dev/null 2>&1; then
             unzip -o "$TMPDIR/ollama_asset" -d "$TMPDIR/ollama_unpack"
         else
             tar -xf "$TMPDIR/ollama_asset" -C "$TMPDIR/ollama_unpack" || true
         fi
+        echo "Contents of $TMPDIR/ollama_unpack:"
+        ls -la "$TMPDIR/ollama_unpack" || true
         find "$TMPDIR/ollama_unpack" -type f -iname '*ollama*' -print -exec cp {} ollama \; -quit || true
     else
         mv "$TMPDIR/ollama_asset" ollama

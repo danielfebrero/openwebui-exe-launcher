@@ -79,6 +79,8 @@ jobs:
 
               # If archive is a ZIP, expand and search for any Windows EXE containing 'ollama'
               if ($downloadPath -match '\.zip$') {
+                # Ensure destination exists to avoid chdir errors when extracting
+                if (-not (Test-Path "ollama_temp")) { New-Item -ItemType Directory -Path "ollama_temp" | Out-Null }
                 Expand-Archive -Path $downloadPath -DestinationPath "ollama_temp" -Force
                 $ollamaExe = Get-ChildItem -Path "ollama_temp" -Recurse -File | Where-Object { $_.Name -match 'ollama' -and $_.Extension -ieq '.exe' } | Select-Object -First 1
               } else {
