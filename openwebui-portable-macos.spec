@@ -36,6 +36,7 @@ else:
 hidden_imports = [
     'open_webui',
     'open_webui.__main__',
+    'numpy',
     'uvicorn',
     'fastapi',
     'pydantic',
@@ -71,7 +72,6 @@ a = Analysis(
     excludes=[
         'tkinter',
         'matplotlib',
-        'numpy',
         'pandas',
         'PIL',
     ],
