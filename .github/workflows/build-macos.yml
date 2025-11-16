@@ -67,20 +67,7 @@ jobs:
       - name: Build portable .app with PyInstaller
         run: |
           # Build macOS app bundle with console for debugging
-          pyinstaller --onedir \
-            --console \
-            --name "OpenWebUI-Ollama" \
-            --add-binary "ollama:." \
-            --add-data "webui_launcher.py:." \
-            --hidden-import "open_webui" \
-            --hidden-import "open_webui.__main__" \
-            --hidden-import "sqlite3" \
-            --hidden-import "uvicorn" \
-            --hidden-import "fastapi" \
-            --collect-all "open_webui" \
-            --noconfirm \
-            --osx-bundle-identifier "com.openwebui.ollama.portable" \
-            main.py
+          pyinstaller --clean openwebui-portable-macos.spec
 
           if [ -d "dist/OpenWebUI-Ollama.app" ]; then
             echo "✓ Build successful"

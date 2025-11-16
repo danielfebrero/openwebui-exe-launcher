@@ -81,19 +81,7 @@ jobs:
         shell: pwsh
         run: |
           # Build with console for debugging and portability
-          # Use --onedir for better compatibility with bundled Python modules
-          pyinstaller --onedir `
-            --console `
-            --name "OpenWebUI-Ollama-Portable" `
-            --add-binary "ollama.exe;." `
-            --add-data "webui_launcher.py;." `
-            --hidden-import "open_webui" `
-            --hidden-import "sqlite3" `
-            --hidden-import "uvicorn" `
-            --hidden-import "fastapi" `
-            --collect-all "open_webui" `
-            --noconfirm `
-            main.py
+          pyinstaller --clean openwebui-portable.spec
 
           if (Test-Path "dist\OpenWebUI-Ollama-Portable\OpenWebUI-Ollama-Portable.exe") {
             Write-Host "✓ Build successful"
