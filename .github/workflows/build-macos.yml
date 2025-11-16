@@ -28,6 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
+          pip install python-magic
 
       - name: Lint download script (bash syntax only)
         shell: bash
