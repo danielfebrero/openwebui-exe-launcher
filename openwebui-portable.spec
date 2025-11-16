@@ -41,6 +41,7 @@ hidden_imports = [
     'sqlalchemy',
     'sqlite3',
     'chromadb',
+    'chromadb.telemetry.product.posthog',
     'langchain',
 ]
 
