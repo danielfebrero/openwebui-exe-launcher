@@ -85,6 +85,12 @@ jobs:
 
           if (Test-Path "dist\OpenWebUI-Ollama-Portable\OpenWebUI-Ollama-Portable.exe") {
             Write-Host "✓ Build successful"
+            # Verify ollama.exe exists in the packaged directory
+            if (Test-Path "dist\OpenWebUI-Ollama-Portable\ollama.exe") {
+              Write-Host "✓ ollama.exe found in package"
+            } else {
+              Write-Host "WARNING: ollama.exe not found in packaged directory - the build may be incomplete"
+            }
           } else {
             throw "ERROR: Build failed - executable not found"
           }

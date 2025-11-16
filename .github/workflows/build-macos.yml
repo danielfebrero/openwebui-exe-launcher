@@ -38,7 +38,7 @@ jobs:
           DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/ollama/ollama/releases/latest" \
             | grep '"browser_download_url"' \
             | sed -E 's/.*"([^"]+)".*/\1/' \
-            | grep -i darwin \
+            | grep -iE 'darwin|macos' \
             | head -n 1)
 
           if [ -z "$DOWNLOAD_URL" ]; then
@@ -87,7 +87,7 @@ jobs:
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
-            --icon "OpenWebUI-Ollama.app" 175 120 \
+            --icon "dist/OpenWebUI-Ollama.app" 175 120 \
             --hide-extension "OpenWebUI-Ollama.app" \
             --app-drop-link 425 120 \
             --no-internet-enable \
@@ -108,6 +108,14 @@ jobs:
           else
             echo "ERROR: DMG creation failed"
             exit 1
+          fi
+
+          # Basic verification: ensure the contained ollama binary exists and is executable
+          if [ -f "dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama" ]; then
+            echo "Found bundled ollama binary inside app:" 
+            ls -l "dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama"
+          else
+            echo "WARNING: ollama binary not found inside the .app bundle" 
           fi
 
       - name: Create README for macOS

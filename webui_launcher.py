@@ -7,11 +7,16 @@ import sys
 import os
 from typing import Any
 
-main: Any = None
+# `main` is a callable provided by open_webui.__main__ or a fallback
+# Avoid conflicting with the `main` symbol imported from open_webui.__main__
+# — use `main_func` to store a callable we can safely execute.
+main_func = None
 
 # Ensure open-webui can be imported
 try:
-    from open_webui.__main__ import main
+    from open_webui.__main__ import main as openwebui_main
+
+    main_func = openwebui_main
 except ImportError:
     # Try to provide a more robust fallback so the launcher works
     # in a frozen environment where module import paths may differ.
@@ -21,12 +26,16 @@ except ImportError:
 
         # Try to import open_webui top-level package and call its main if present
         pkg = importlib.import_module("open_webui")
-        main = getattr(pkg, "main", None)
-        if not main:
+        main_candidate = getattr(pkg, "main", None)
+        if callable(main_candidate):
+            main_func = main_candidate
+        if not main_func:
             # As a final fallback, run the package as a module (runs __main__)
             def main():
                 # runpy will respect sys.argv set below
                 runpy.run_module("open_webui.__main__", run_name="__main__")
+
+            main_func = main
 
     except Exception as e:
         print(f"ERROR: Failed to import or locate open-webui: {e}")
@@ -43,7 +52,9 @@ def run_webui_server():
     sys.argv = ["open-webui", "serve", "--port", port, "--host", host]
 
     try:
-        main()
+        if main_func is None:
+            raise RuntimeError("No webui entry point found")
+        main_func()
     except Exception as e:
         print(f"ERROR: Open WebUI failed to start: {e}")
         sys.exit(1)

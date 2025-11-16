@@ -6,6 +6,7 @@ This provides more control over the build process than command-line arguments.
 
 import sys
 from pathlib import Path
+import sys
 from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
@@ -18,9 +19,12 @@ added_files = [
     ('webui_launcher.py', '.'),
 ]
 
-# Only add ollama if it exists (allows build to fail gracefully)
+# Only add ollama if it exists (allows build to fail gracefully).
+# Place Ollama in binaries so PyInstaller preserves executable flags where
+# possible. If the binary is not present, warn the packager.
+added_binaries = []
 if Path(ollama_binary).exists():
-    added_files.append((ollama_binary, '.'))
+    added_binaries.append((ollama_binary, '.'))
 else:
     print(f"WARNING: {ollama_binary} not found. Build will fail at runtime!")
 
@@ -40,11 +44,20 @@ hidden_imports = [
 open_webui_datas, open_webui_binaries, open_webui_hiddenimports = collect_all('open_webui')
 hidden_imports = sorted(set(hidden_imports + open_webui_hiddenimports))
 datas = added_files + open_webui_datas
-binaries = open_webui_binaries
+# Merge collected binaries with our added Ollama binary
+binaries = open_webui_binaries + added_binaries
 
 a = Analysis(
     ['main.py'],
-    pathex=[str(Path(__file__).parent)],
+    # PyInstaller runs the spec file where __file__ may not be available
+    # in some environments (e.g., in packed or hosted builds). Fallback
+    # to the current working directory to ensure the expected base path.
+    try:
+        base_path = Path(__file__).parent
+    except NameError:
+        base_path = Path.cwd()
+
+    pathex=[str(base_path)],
     binaries=binaries,
     datas=datas,
     hiddenimports=hidden_imports,

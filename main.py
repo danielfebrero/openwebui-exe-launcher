@@ -26,8 +26,14 @@ WEBUI_CHILD_FLAG = "--webui-child"
 def get_bundled_path(filename):
     """Get path to bundled resource, handling PyInstaller frozen state."""
     if getattr(sys, "frozen", False):
-        # Running as compiled exe
-        base_path = Path(sys._MEIPASS)
+        # Running as compiled exe; use sys._MEIPASS when available. Some
+        # static analyzers don't know about _MEIPASS; guard with getattr.
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            base_path = Path(meipass)
+        else:
+            # Fallback to the executable's parent if _MEIPASS isn't set.
+            base_path = Path(sys.executable).parent
     else:
         # Running as script
         base_path = Path(__file__).parent
@@ -37,8 +43,19 @@ def get_bundled_path(filename):
 def get_app_dir():
     """Get application directory (USB drive location for portable mode)."""
     if getattr(sys, "frozen", False):
-        # Portable mode: use exe's directory
-        return Path(sys.executable).parent
+        # Portable mode: use exe's directory. For macOS .app bundles we want
+        # to store user data next to the .app (outside the bundle) so it does
+        # not get packaged into the application and remains writable. Walk
+        # up the parent tree to find a .app folder and return its parent.
+        exe_dir = Path(sys.executable).parent
+        if sys.platform == "darwin":
+            # Walk up to find .app; if found, return its parent directory
+            p = Path(sys.executable)
+            while p != p.parent:
+                if p.suffix == ".app":
+                    return p.parent
+                p = p.parent
+        return exe_dir
     return Path(__file__).parent
 
 
@@ -151,6 +168,18 @@ def run_ollama():
             f"Ollama binary not found at: {ollama_binary}\n"
             f"Ensure the build process bundled the correct file."
         )
+
+    # Ensure the binary is executable on Unix-like systems. During packaging
+    # the executable permission can sometimes be lost, so set it explicitly
+    # before attempting to launch Ollama.
+    try:
+        if sys.platform != "win32":
+            Path(ollama_binary).chmod(0o755)
+    except Exception as e:
+        # Chmod failure is non-fatal; the subsequent subprocess call may still
+        # succeed (or fail) depending on filesystem semantics — warn instead
+        # of raising to avoid hiding the original error message.
+        print(f"Warning: Failed to set executable permissions on {ollama_binary}: {e}")
 
     print(f"Starting Ollama from: {ollama_binary}")
     print(f"Models directory: {models_dir}")
