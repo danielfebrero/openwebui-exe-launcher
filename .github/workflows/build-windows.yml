@@ -1,0 +1,54 @@
+name: Forge GPU/CPU .EXE with Ollama Entombment
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: [3.11]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Python Shadows
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Harvest GPU-Blessed Ollama Binary (v0.3.12)
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/ollama/ollama/releases/download/v0.3.12/ollama-windows-amd64.exe" -OutFile "ollama.exe"
+
+      - name: Entomb in Bundled .EXE
+        run: |
+          pyinstaller --onefile --windowed --name OpenWebUIOllamaGPULauncher --add-binary "ollama.exe;." main.py
+
+      - name: Upload Relic
+        uses: actions/upload-artifact@v4
+        with:
+          name: owui-ollama-gpu-windows-exe
+          path: dist/OpenWebUIOllamaGPULauncher.exe
+
+      - name: Release Vortex if Tagged
+        if: github.event_name == 'release'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: GPU-Attuned Release ${{ github.ref }}
+          draft: false
+          prerelease: false
