@@ -103,7 +103,7 @@ jobs:
                 Write-Host "ollama.exe not found inside $assetName"
                 if ($downloadPath -match '\.zip$') {
                   # For diagnostics, list the archive contents for debugging
-                  Write-Host "Contents of $assetName:"
+                  Write-Host "Contents of ${assetName}:"
                   Get-ChildItem -Path "ollama_temp" -Recurse | Select-Object FullName | ForEach-Object { Write-Host (" - " + $_.FullName) }
                 }
                 # remove any temporary extraction so next candidate starts clean
