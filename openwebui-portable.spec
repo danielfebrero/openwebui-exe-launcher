@@ -47,16 +47,19 @@ datas = added_files + open_webui_datas
 # Merge collected binaries with our added Ollama binary
 binaries = open_webui_binaries + added_binaries
 
+try:
+    base_path = Path(__file__).parent
+except NameError:
+    # When PyInstaller or certain build environments run the spec, __file__ may
+    # not be defined. Fall back to the current working directory to avoid a
+    # SyntaxError or NameError inside the Analysis call.
+    base_path = Path.cwd()
+
+
 a = Analysis(
     ['main.py'],
-    # PyInstaller runs the spec file where __file__ may not be available
-    # in some environments (e.g., in packed or hosted builds). Fallback
-    # to the current working directory to ensure the expected base path.
-    try:
-        base_path = Path(__file__).parent
-    except NameError:
-        base_path = Path.cwd()
-
+    # Fallback base path to ensure we can find bundled resources even when
+    # __file__ isn't defined during execution in certain environments.
     pathex=[str(base_path)],
     binaries=binaries,
     datas=datas,
