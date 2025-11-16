@@ -36,21 +36,37 @@ jobs:
           $latestTag = $latest.tag_name
           Write-Host "Downloading Ollama $latestTag"
 
-          # Prefer any windows release asset. Keep asset name for extension detection.
-          $asset = $latest.assets | Where-Object { $_.name -match 'windows' } | Select-Object -First 1
-          if ($asset) {
-            Write-Host "Selected asset: $($asset.name)"
-            $url = $asset.browser_download_url
-            $assetName = $asset.name
-          } else {
+          # Prefer windows release assets, and try multiple candidates if the first one doesn't contain an exe.
+          Write-Host "Available assets:"
+          $latest.assets | ForEach-Object { Write-Host " - $($_.name)" }
+
+          # Candidate asset filters: prefer non-rocm amd64 builds, but fall back to other 'windows' assets
+          $priorityPatterns = @[ 'windows.*amd64', 'windows.*64', 'windows' ]
+
+          $assetCandidates = @()
+          foreach ($p in $priorityPatterns) {
+            $assetCandidates += $latest.assets | Where-Object { $_.name -match $p }
+          }
+          # remove duplicates
+          $assetCandidates = $assetCandidates | Select-Object -Unique
+
+          if (-not $assetCandidates -or $assetCandidates.Count -eq 0) {
             Write-Host "WARNING: No windows asset found in release; falling back to default name"
-            $assetName = "ollama-windows-amd64.zip"
-            $url = "https://github.com/ollama/ollama/releases/download/$latestTag/$assetName"
+            $assetCandidates = @(
+              @{ name = 'ollama-windows-amd64.zip'; browser_download_url = "https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.zip" }
+            )
           }
 
-          # Retry download up to 3 times
-          $maxRetries = 3
-          for ($i = 1; $i -le $maxRetries; $i++) {
+          # Try each candidate asset until we find an asset that contains a windows exe.
+          $found = $false
+          foreach ($asset in $assetCandidates) {
+            $assetName = $asset.name
+            Write-Host "Trying asset: $assetName"
+            $url = $asset.browser_download_url
+
+            # Retry download up to 3 times for this asset
+            $maxRetries = 3
+            for ($i = 1; $i -le $maxRetries; $i++) {
             try {
               Write-Host "Download attempt $i/$maxRetries..."
               # Save the downloaded file using asset name extension if available
@@ -78,17 +94,32 @@ jobs:
                 if (Test-Path "ollama_temp") { Remove-Item "ollama_temp" -Recurse -Force }
                 if (Test-Path $downloadPath) { Remove-Item $downloadPath -Force }
                 Write-Host "✓ ollama.exe downloaded successfully"
+                $found = $true
                 break
               } else {
-                throw "ollama.exe not found in archive"
+                Write-Host "ollama.exe not found inside $assetName"
+                if ($downloadPath -match '\.zip$') {
+                  # For diagnostics, list the archive contents for debugging
+                  Write-Host "Contents of $assetName:"
+                  Get-ChildItem -Path "ollama_temp" -Recurse | Select-Object FullName | ForEach-Object { Write-Host (" - " + $_.FullName) }
+                }
+                # remove any temporary extraction so next candidate starts clean
+                if (Test-Path "ollama_temp") { Remove-Item "ollama_temp" -Recurse -Force }
               }
             } catch {
               if ($i -eq $maxRetries) {
-                throw "ERROR: Failed to download ollama.exe after $maxRetries attempts: $_"
+                Write-Host "Failed to download or extract $assetName after $maxRetries attempts: $_"
               }
               Write-Host "Retrying in 5 seconds..."
               Start-Sleep -Seconds 5
             }
+
+            if ($found) { break }
+          }
+
+          if (-not $found) {
+            throw "ERROR: Failed to download ollama.exe: none of the windows assets contained an executable (tried $($assetCandidates.Count) candidate(s))."
+          }
           }
 
       - name: Build portable EXE with PyInstaller
