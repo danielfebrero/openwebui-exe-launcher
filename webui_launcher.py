@@ -12,35 +12,26 @@ from typing import Any
 # — use `main_func` to store a callable we can safely execute.
 main_func = None
 
+
 # Ensure open-webui can be imported
+# Try multiple methods to run open-webui
+def run_via_cli():
+    """Run open-webui using its CLI interface"""
+    import runpy
+
+    # This runs the module as if invoked with: python -m open_webui
+    runpy.run_module("open_webui", run_name="__main__")
+
+
 try:
     from open_webui.__main__ import main as openwebui_main
 
     main_func = openwebui_main
-except ImportError:
-    # Try to provide a more robust fallback so the launcher works
-    # in a frozen environment where module import paths may differ.
-    try:
-        import importlib
-        import runpy
-
-        # Try to import open_webui top-level package and call its main if present
-        pkg = importlib.import_module("open_webui")
-        main_candidate = getattr(pkg, "main", None)
-        if callable(main_candidate):
-            main_func = main_candidate
-        if not main_func:
-            # As a final fallback, run the package as a module (runs __main__)
-            def main():
-                # runpy will respect sys.argv set below
-                runpy.run_module("open_webui.__main__", run_name="__main__")
-
-            main_func = main
-
-    except Exception as e:
-        print(f"ERROR: Failed to import or locate open-webui: {e}")
-        print("Make sure open-webui is installed: pip install open-webui")
-        sys.exit(1)
+    print("[WebUI Init] Successfully imported open_webui.__main__.main")
+except ImportError as e:
+    print(f"[WebUI Init] Could not import open_webui.__main__.main: {e}")
+    # Use the CLI runner as fallback
+    main_func = run_via_cli
 
 
 def run_webui_server():
@@ -56,6 +47,8 @@ def run_webui_server():
     print(f"[WebUI Child] Port: {port}, Host: {host}")
     print(f"[WebUI Child] Data directory: {data_dir}")
     print(f"[WebUI Child] Ollama API: {os.environ.get('OLLAMA_API_BASE', 'not set')}")
+    print(f"[WebUI Child] Python executable: {sys.executable}")
+    print(f"[WebUI Child] Python version: {sys.version}")
 
     # Set default arguments for open-webui serve
     sys.argv = ["open-webui", "serve", "--port", port, "--host", host]
@@ -65,11 +58,31 @@ def run_webui_server():
         if main_func is None:
             raise RuntimeError("No webui entry point found")
         print(f"[WebUI Child] Calling main_func...")
-        main_func()
-        print(f"[WebUI Child] main_func returned (should not reach here)")
+        sys.stdout.flush()
+
+        # Call the main function - it should block and run the server
+        result = main_func()
+
+        # If we get here, the server exited unexpectedly
+        print(f"[WebUI Child] main_func returned unexpectedly with result: {result}")
+        sys.stdout.flush()
+
+        # Exit with error code since the server shouldn't exit
+        sys.exit(1)
+
+    except SystemExit as e:
+        # If open-webui calls sys.exit, re-raise it
+        print(f"[WebUI Child] SystemExit caught: {e.code}")
+        sys.stdout.flush()
+        raise
+    except KeyboardInterrupt:
+        print(f"[WebUI Child] Interrupted by user")
+        sys.stdout.flush()
+        sys.exit(0)
     except Exception as e:
         print(f"[WebUI Child] ERROR: Open WebUI failed to start: {e}")
         traceback.print_exc()
+        sys.stdout.flush()
         sys.exit(1)
 
 
