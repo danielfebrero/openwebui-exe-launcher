@@ -308,11 +308,20 @@ def run_webui():
         f"WebUI environment: DATA_DIR={env['DATA_DIR']}, OLLAMA_API_BASE={env['OLLAMA_API_BASE']}"
     )
 
+    # Create a separate log file for WebUI child process
+    webui_log_file = app_dir / "webui.log"
+
     try:
-        # Don't redirect stdout/stderr so they go to the log naturally
-        webui_process = subprocess.Popen(
-            webui_cmd,
-            env=env,
+        # Redirect stdout/stderr to webui log file
+        with open(webui_log_file, "w") as log_f:
+            webui_process = subprocess.Popen(
+                webui_cmd,
+                env=env,
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
+            )
+        logging.info(
+            f"WebUI process started (PID: {webui_process.pid}), output logging to: {webui_log_file}"
         )
     except Exception as e:
         raise RuntimeError(f"Failed to start WebUI process: {e}")
