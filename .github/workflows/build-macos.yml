@@ -1,0 +1,179 @@
+name: Build Portable macOS App (Ollama + Open WebUI)
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Download Ollama binary (latest)
+        run: |
+          LATEST_TAG=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Downloading Ollama $LATEST_TAG"
+          URL="https://github.com/ollama/ollama/releases/download/${LATEST_TAG}/ollama-darwin"
+          curl -L "$URL" -o ollama
+          chmod +x ollama
+          if [ -f "ollama" ]; then
+            echo "✓ ollama binary downloaded successfully"
+          else
+            echo "ERROR: ollama not found after download"
+            exit 1
+          fi
+
+      - name: Build portable .app with PyInstaller
+        run: |
+          # Build macOS app bundle
+          pyinstaller --onedir \
+            --windowed \
+            --name "OpenWebUI-Ollama" \
+            --add-binary "ollama:." \
+            --add-data "webui_launcher.py:." \
+            --hidden-import "open_webui" \
+            --hidden-import "open_webui.__main__" \
+            --hidden-import "sqlite3" \
+            --hidden-import "uvicorn" \
+            --hidden-import "fastapi" \
+            --collect-all "open_webui" \
+            --noconfirm \
+            --osx-bundle-identifier "com.openwebui.ollama.portable" \
+            main.py
+
+          if [ -d "dist/OpenWebUI-Ollama.app" ]; then
+            echo "✓ Build successful"
+          else
+            echo "ERROR: Build failed - .app bundle not found"
+            exit 1
+          fi
+
+      - name: Create portable DMG package
+        run: |
+          # Install create-dmg for better DMG creation
+          brew install create-dmg
+
+          # Create DMG
+          create-dmg \
+            --volname "OpenWebUI-Ollama-Portable" \
+            --volicon "dist/OpenWebUI-Ollama.app/Contents/Resources/icon-windowed.icns" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "OpenWebUI-Ollama.app" 175 120 \
+            --hide-extension "OpenWebUI-Ollama.app" \
+            --app-drop-link 425 120 \
+            --no-internet-enable \
+            "OpenWebUI-Ollama-Portable-macOS.dmg" \
+            "dist/" || true
+
+          # Fallback to simple DMG if create-dmg fails
+          if [ ! -f "OpenWebUI-Ollama-Portable-macOS.dmg" ]; then
+            echo "Creating simple DMG..."
+            hdiutil create -volname "OpenWebUI-Ollama-Portable" \
+              -srcfolder "dist/OpenWebUI-Ollama.app" \
+              -ov -format UDZO \
+              "OpenWebUI-Ollama-Portable-macOS.dmg"
+          fi
+
+          if [ -f "OpenWebUI-Ollama-Portable-macOS.dmg" ]; then
+            echo "✓ DMG created successfully"
+          else
+            echo "ERROR: DMG creation failed"
+            exit 1
+          fi
+
+      - name: Create README for macOS
+        run: |
+          cat > "README-macOS.txt" << 'EOF'
+          # Open WebUI + Ollama Portable Launcher (macOS)
+
+          ## Quick Start
+          1. Open the DMG file
+          2. Drag "OpenWebUI-Ollama.app" to Applications (or any folder)
+          3. Right-click the app and select "Open" (first time only - for Gatekeeper)
+          4. Click "Open" in the security dialog
+          5. Wait for the browser to open automatically
+          6. Access the interface at http://localhost:3000
+
+          ## Features
+          - Fully portable - can run from any location
+          - No installation required
+          - All data stored in the application folder
+          - GPU acceleration (Metal/CUDA if available)
+
+          ## Data Locations
+          The app creates these folders next to OpenWebUI-Ollama.app:
+          - .ollama/models/ - AI models
+          - data/ - User data and settings
+
+          ## Troubleshooting
+
+          ### First Launch Security
+          macOS will block the app on first launch. To fix:
+          1. Right-click (or Control-click) the app
+          2. Select "Open" from the menu
+          3. Click "Open" in the dialog
+
+          Or use Terminal:
+          xattr -cr /path/to/OpenWebUI-Ollama.app
+
+          ### Ports in Use
+          If ports 11434 or 3000 are in use:
+          - Close other Ollama instances
+          - Check Activity Monitor for processes using these ports
+
+          ### Firewall Permissions
+          macOS may ask for network access:
+          - Click "Allow" for localhost communication
+
+          ## Shutdown
+          - Use Cmd+Q to quit
+          - Or close from the menu bar
+          - Or use Activity Monitor to force quit if needed
+
+          ## System Requirements
+          - macOS 10.15 (Catalina) or later
+          - 8GB RAM minimum (16GB recommended)
+          - 10GB+ free disk space (for models)
+          EOF
+
+          echo "✓ README created"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwebui-ollama-portable-macos
+          path: |
+            OpenWebUI-Ollama-Portable-macOS.dmg
+            README-macOS.txt
+
+      - name: Upload to release (if tagged)
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            OpenWebUI-Ollama-Portable-macOS.dmg
+            README-macOS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

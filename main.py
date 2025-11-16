@@ -189,12 +189,11 @@ def run_webui():
         )
 
     try:
-        # Use bundled Python interpreter
-        python_exe = (
-            sys.executable
-            if not getattr(sys, "frozen", False)
-            else get_bundled_path("python.exe")
-        )
+        # Use sys.executable which works correctly in all scenarios:
+        # - When running as script: points to Python interpreter
+        # - When frozen (PyInstaller): points to the bundled Python interpreter
+        #   (Windows: embedded in exe, macOS: embedded in .app bundle)
+        python_exe = sys.executable
 
         webui_process = subprocess.Popen(
             [python_exe, webui_script],

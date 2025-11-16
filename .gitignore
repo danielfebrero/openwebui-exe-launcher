@@ -37,6 +37,8 @@ ollama.exe
 ollama
 ollama.zip
 ollama-*.zip
+ollama-darwin
+ollama-windows-amd64.zip
 
 # IDE
 .vscode/
@@ -49,6 +51,12 @@ ollama-*.zip
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# macOS specific
+*.dmg
+*.app
+.AppleDouble
+.LSOverride
 
 # Logs
 *.log

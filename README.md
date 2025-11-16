@@ -21,6 +21,16 @@ A fully portable Windows executable that bundles Ollama and Open WebUI into a si
 4. Browser opens automatically to `http://localhost:3000`
 5. Start chatting with AI models!
 
+### For Users (macOS)
+
+1. Download the latest `OpenWebUI-Ollama-Portable-macOS.dmg` from [Releases](../../releases)
+2. Open the DMG file
+3. Drag `OpenWebUI-Ollama.app` to Applications (or any folder)
+4. **First time only**: Right-click the app and select "Open" (bypasses Gatekeeper)
+5. Click "Open" in the security dialog
+6. Browser opens automatically to `http://localhost:3000`
+7. Start chatting with AI models!
+
 ### For Developers
 
 #### Prerequisites
@@ -41,25 +51,45 @@ pip install -r requirements.txt
 
 # Run directly (development)
 python main.py
-
-# Build executable (Windows)
-# 1. Download ollama.exe manually or use the GitHub Actions workflow
-# 2. Build with PyInstaller:
-pyinstaller --onedir \
-  --console \
-  --name "OpenWebUI-Ollama-Portable" \
-  --add-binary "ollama.exe:." \
-  --add-data "webui_launcher.py:." \
-  --hidden-import "open_webui" \
-  --collect-all "open_webui" \
-  main.py
-
-# Output will be in dist/OpenWebUI-Ollama-Portable/
 ```
+
+#### Build Executable
+
+**macOS:**
+
+```bash
+# Automated build script
+./build-macos.sh
+
+# Or manual build
+pyinstaller --clean openwebui-portable-macos.spec
+
+# Output: dist/OpenWebUI-Ollama.app
+```
+
+**Windows:**
+
+```cmd
+# Automated build script
+build-windows.bat
+
+# Or manual build
+pyinstaller --clean openwebui-portable.spec
+
+# Output: dist\OpenWebUI-Ollama-Portable\
+```
+
+**Using GitHub Actions:**
+
+- Push to master branch
+- Windows and macOS builds run automatically
+- Download artifacts from Actions tab or Releases
 
 ## Architecture
 
-```
+### Windows Structure
+
+```text
 OpenWebUI-Ollama-Portable/
 ├── OpenWebUI-Ollama-Portable.exe    # Main launcher
 ├── ollama.exe                        # Bundled Ollama binary
@@ -68,6 +98,22 @@ OpenWebUI-Ollama-Portable/
 ├── .ollama/                          # Created at runtime
 │   └── models/                       # Downloaded AI models
 └── data/                             # Created at runtime
+    └── (user data, chats, settings)  # All user data
+```
+
+### macOS Structure
+
+```text
+OpenWebUI-Ollama.app/
+├── Contents/
+│   ├── MacOS/
+│   │   ├── OpenWebUI-Ollama          # Main executable
+│   │   └── ollama                    # Bundled Ollama binary
+│   ├── Resources/                    # Python runtime & dependencies
+│   └── Info.plist                    # App metadata
+├── .ollama/                          # Created next to .app
+│   └── models/                       # Downloaded AI models
+└── data/                             # Created next to .app
     └── (user data, chats, settings)  # All user data
 ```
 
@@ -186,11 +232,14 @@ This project is a launcher/wrapper. Component licenses:
 
 ## Roadmap
 
-- [ ] Support for macOS and Linux builds
+- [x] Support for macOS builds (.app bundles)
+- [x] Support for Windows builds (.exe)
+- [ ] Support for Linux builds (AppImage)
 - [ ] Model preloading in build process
 - [ ] Custom port configuration
 - [ ] Auto-update functionality
 - [ ] Model management UI integration
+- [ ] Code signing for macOS and Windows
 
 ---
 
