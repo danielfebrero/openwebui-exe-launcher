@@ -116,6 +116,16 @@ jobs:
             exit 1
           fi
 
+      - name: Lint download script (bash syntax only)
+        shell: bash
+        run: |
+          bash -n ci/download-ollama.sh
+
+      - name: Download Ollama binary (latest)
+        shell: bash
+        run: |
+          bash ci/download-ollama.sh
+
       - name: Create portable DMG package
         run: |
           # Install create-dmg for better DMG creation
@@ -158,13 +168,26 @@ jobs:
           echo "Contents of app bundle (Resources):"
           ls -la "dist/OpenWebUI-Ollama.app/Contents/Resources" || true
 
-          if [ -f "dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama" ]; then
-            echo "Found bundled ollama binary inside app:" 
-            ls -l "dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama"
+            # Accept regular file or symlink for `ollama`. Print diagnostics so we can see symlink targets.
+            OLLAMA_PATH="dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama"
+            if [ -f "$OLLAMA_PATH" ] || [ -L "$OLLAMA_PATH" ]; then
+              echo "Found bundled ollama binary inside app:"
+              ls -la "$OLLAMA_PATH" || true
+              if [ -L "$OLLAMA_PATH" ]; then
+                echo "ollama is a symlink pointing to: $(readlink "$OLLAMA_PATH")"
+                if [ -f "$(readlink "$OLLAMA_PATH")" ]; then
+                  echo "Symlink target exists inside bundle"
+                else
+                  echo "Symlink target is missing or not a file"
+                fi
+              fi
+              file "$OLLAMA_PATH" || true
           else
             echo "ERROR: ollama binary not found inside the .app bundle"
             exit 1
           fi
+            echo "Listing Contents/Frameworks inside app bundle for additional context:"
+            ls -la "dist/OpenWebUI-Ollama.app/Contents/Frameworks" || true
 
       - name: Create archive of dist for diagnostics (macOS)
         if: failure()

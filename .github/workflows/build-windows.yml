@@ -29,6 +29,18 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Lint download script (PowerShell syntax only)
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('ci/download-ollama-windows.ps1', [ref]$null, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            Write-Host "PowerShell parsing errors found:";
+            $errors | ForEach-Object { Write-Host $_.ToString() }
+            exit 1
+          }
+          Write-Host "PowerShell parse OK"
+
       - name: Download Ollama binary (latest)
         shell: pwsh
         run: |
@@ -37,101 +49,10 @@ jobs:
           Write-Host "Downloading Ollama $latestTag"
 
           # Prefer windows release assets, and try multiple candidates if the first one doesn't contain an exe.
-          Write-Host "Available assets:"
-          $latest.assets | ForEach-Object { Write-Host " - $($_.name)" }
-
-          # Candidate asset filters: prefer non-rocm amd64 builds, but fall back to other 'windows' assets
-          $priorityPatterns = @('windows.*amd64','windows.*64','windows')
-
-          $assetCandidates = @()
-          foreach ($p in $priorityPatterns) {
-            $assetCandidates += $latest.assets | Where-Object { $_.name -match $p }
-          }
-          # remove duplicates
-          $assetCandidates = $assetCandidates | Select-Object -Unique
-
-          if (-not $assetCandidates -or $assetCandidates.Count -eq 0) {
-            Write-Host "WARNING: No windows asset found in release; falling back to default name"
-            $assetCandidates = @(
-              @{ name = 'ollama-windows-amd64.zip'; browser_download_url = "https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.zip" }
-            )
-          }
-
-          # Try each candidate asset until we find an asset that contains a windows exe.
-          $found = $false
-          Write-Host "Number of candidate assets: $($assetCandidates.Count)"
-          foreach ($asset in $assetCandidates) {
-            $assetName = $asset.name
-
-
-            Write-Host "Trying asset: $assetName"
-            $url = $asset.browser_download_url
-
-            # Retry download up to 3 times for this asset
-            $maxRetries = 3
-            for ($i = 1; $i -le $maxRetries; $i++) {
-            try {
-              Write-Host "Download attempt $i/$maxRetries..."
-              # Save the downloaded file using asset name extension if available
-              $ext = [System.IO.Path]::GetExtension($assetName)
-              $downloadPath = "ollama_download$ext"
-              Invoke-WebRequest -Uri $url -OutFile $downloadPath -ErrorAction Stop
-
-              # If archive is a ZIP, expand and search for any Windows EXE containing 'ollama'
-              if ($downloadPath -match '\.zip$') {
-                # Ensure destination exists to avoid chdir errors when extracting
-                if (-not (Test-Path "ollama_temp")) { New-Item -ItemType Directory -Path "ollama_temp" | Out-Null }
-                Expand-Archive -Path $downloadPath -DestinationPath "ollama_temp" -Force
-                $ollamaExe = Get-ChildItem -Path "ollama_temp" -Recurse -File | Where-Object { $_.Name -match 'ollama' -and $_.Extension -ieq '.exe' } | Select-Object -First 1
-              } else {
-                # Not a zip; try to locate 'ollama' exe in the current working folder or as the download
-                $ollamaExe = $null
-                if ($downloadPath -match '\.exe$') {
-                  $ollamaExe = Get-Item -Path $downloadPath -ErrorAction SilentlyContinue
-                }
-                if (-not $ollamaExe) {
-                  $ollamaExe = Get-ChildItem -Path '.' -Filter '*ollama*.exe' -Recurse | Select-Object -First 1
-                }
-              }
-              if ($ollamaExe) {
-                Copy-Item $ollamaExe.FullName -Destination "ollama.exe" -Force
-                # Remove temporary files if present
-                if (Test-Path "ollama_temp") { Remove-Item "ollama_temp" -Recurse -Force }
-                if (Test-Path $downloadPath) { Remove-Item $downloadPath -Force }
-                Write-Host "✓ ollama.exe downloaded successfully"
-                $found = $true
-                break
-              } else {
-                Write-Host "ollama.exe not found inside $assetName"
-                if ($downloadPath -match '\.zip$') {
-                  # For diagnostics, list the archive contents for debugging
-                  Write-Host "Contents of ${assetName}:"
-                  Get-ChildItem -Path "ollama_temp" -Recurse | Select-Object FullName | ForEach-Object { Write-Host (" - " + $_.FullName) }
-                }
-                # remove any temporary extraction so next candidate starts clean
-                if (Test-Path "ollama_temp") { Remove-Item "ollama_temp" -Recurse -Force }
-              }
-            } catch {
-              if ($i -eq $maxRetries) {
-                Write-Host "Failed to download or extract $assetName after $maxRetries attempts: $_"
-              }
-              Write-Host "Retrying in 5 seconds..."
-              Start-Sleep -Seconds 5
-            }
-
-            if ($found) { break }
-          }
-
-          if (-not $found) {
-            throw "ERROR: Failed to download ollama.exe: none of the windows assets contained an executable (tried $($assetCandidates.Count) candidate(s))."
-          }
-
-      - name: Build portable EXE with PyInstaller
-        shell: pwsh
-        run: |
-          # Build with console for debugging and portability
-          pyinstaller --clean openwebui-portable.spec
-
+          - name: Download Ollama binary (latest)
+            shell: pwsh
+            run: |
+              pwsh -NoProfile -File ci/download-ollama-windows.ps1
           if (Test-Path "dist\OpenWebUI-Ollama-Portable\OpenWebUI-Ollama-Portable.exe") {
             Write-Host "✓ Build successful"
             # Verify ollama.exe exists in the packaged directory
