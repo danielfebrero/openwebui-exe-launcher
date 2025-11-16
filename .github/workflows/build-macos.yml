@@ -13,7 +13,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -52,37 +52,8 @@ jobs:
             exit 1
           fi
 
-      - name: Create portable DMG package
+      - name: Verify ollama binary in app bundle
         run: |
-          # Install create-dmg for better DMG creation
-          brew install create-dmg
-
-          # Create DMG without icon reference (no icon bundled)
-          # create-dmg can be picky about the --icon argument. If it fails we'll fall back to hdiutil.
-          create-dmg \
-            --volname "OpenWebUI-Ollama-Portable" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --app-drop-link 425 120 \
-            --no-internet-enable \
-            "OpenWebUI-Ollama-Portable-macOS.dmg" \
-            "dist/" || true
-
-          # Fallback to simple DMG if create-dmg fails
-          if [ ! -f "OpenWebUI-Ollama-Portable-macOS.dmg" ]; then
-            echo "Creating simple DMG..."
-            hdiutil create -volname "OpenWebUI-Ollama-Portable" \
-              -srcfolder "dist/OpenWebUI-Ollama.app" \
-              -ov -format UDZO \
-              "OpenWebUI-Ollama-Portable-macOS.dmg"
-          fi
-
-          if [ -f "OpenWebUI-Ollama-Portable-macOS.dmg" ]; then
-            echo "✓ DMG created successfully"
-          else
-            echo "ERROR: DMG creation failed"
-            exit 1
-          fi
 
           # Basic verification: ensure the contained ollama binary exists and is executable
           # To help debug packaging, list what's inside the app bundle (Contents/MacOS and Resources)
@@ -224,8 +195,27 @@ jobs:
         with:
           name: openwebui-ollama-portable-macos
           path: |
-            OpenWebUI-Ollama-Portable-macOS.dmg
+            dist/OpenWebUI-Ollama.app
             README-macOS.txt
+
+      - name: Create DMG for release
+        if: github.event_name == 'release'
+        run: |
+          # Install create-dmg for better DMG creation
+          brew install create-dmg
+
+          # Create DMG without icon reference (no icon bundled)
+          create-dmg \
+            --volname "OpenWebUI-Ollama-Portable" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --app-drop-link 425 120 \
+            --no-internet-enable \
+            "OpenWebUI-Ollama-Portable-macOS.dmg" \
+            "dist/" || hdiutil create -volname "OpenWebUI-Ollama-Portable" \
+              -srcfolder "dist/OpenWebUI-Ollama.app" \
+              -ov -format UDZO \
+              "OpenWebUI-Ollama-Portable-macOS.dmg"
 
       - name: Upload to release (if tagged)
         if: github.event_name == 'release'

@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -55,25 +55,14 @@ jobs:
           }
           pyinstaller --noconfirm openwebui-portable.spec
 
-      - name: Create portable ZIP package
-        shell: pwsh
-        run: |
-          # Create a clean portable package
-          $packageName = "OpenWebUI-Ollama-Portable-Windows"
-          New-Item -ItemType Directory -Force -Path $packageName
-
-          # Copy the built application
-          Copy-Item -Recurse "dist\OpenWebUI-Ollama-Portable\*" "$packageName\"
-
           # Create README for users
           @"
           # Open WebUI + Ollama Portable Launcher
 
           ## Quick Start
-          1. Extract this entire folder to a USB drive or any location
-          2. Run OpenWebUI-Ollama-Portable.exe
-          3. Wait for the browser to open automatically
-          4. Access the interface at http://localhost:3000
+          1. Run OpenWebUI-Ollama-Portable.exe
+          2. Wait for the browser to open automatically
+          3. Access the interface at http://localhost:3000
 
           ## Features
           - Fully portable - runs from USB drive
@@ -92,11 +81,8 @@ jobs:
 
           ## Shutdown
           Press Ctrl+C in the console window or close the window
-          "@ | Out-File -FilePath "$packageName\README.txt" -Encoding utf8
-
-          # Create ZIP
-          Compress-Archive -Path $packageName -DestinationPath "$packageName.zip" -Force
-          Write-Host "✓ Portable package created: $packageName.zip"
+          "@ | Out-File -FilePath "dist\OpenWebUI-Ollama-Portable\README.txt" -Encoding utf8
+          Write-Host "✓ Portable app created with README"
 
       - name: Cleanup on failure
         if: failure()
@@ -114,8 +100,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: openwebui-ollama-portable-windows
-          path: OpenWebUI-Ollama-Portable-Windows.zip
-          compression-level: 0 # Already compressed
+          path: dist/OpenWebUI-Ollama-Portable/
 
       - name: Upload ollama extraction artifacts (diagnostic)
         if: always()
@@ -147,6 +132,12 @@ jobs:
         with:
           name: openwebui-dist-windows
           path: openwebui-dist-windows.zip
+
+      - name: Create ZIP for release
+        if: github.event_name == 'release'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist\OpenWebUI-Ollama-Portable\*" -DestinationPath "OpenWebUI-Ollama-Portable-Windows.zip" -Force
 
       - name: Upload to release (if tagged)
         if: github.event_name == 'release'

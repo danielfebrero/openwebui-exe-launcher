@@ -7,6 +7,7 @@ import time
 import socket
 import atexit
 import signal
+import logging
 from pathlib import Path
 
 try:
@@ -304,6 +305,9 @@ def run_webui():
         webui_process = subprocess.Popen(
             build_self_command([WEBUI_CHILD_FLAG]),
             env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
     except Exception as e:
         raise RuntimeError(f"Failed to start WebUI process: {e}")
@@ -327,11 +331,17 @@ def run_webui():
         # Check if process crashed
         if webui_process.poll() is not None:
             exit_code = webui_process.returncode
-            raise RuntimeError(
-                f"WebUI process crashed during startup (exit code {exit_code}). "
-                "Check console output above for error details. "
-                "Common issues: missing dependencies, database errors, or Ollama connection problems."
+            # Capture any error output
+            stdout, stderr = webui_process.communicate(timeout=1)
+            error_msg = (
+                f"WebUI process crashed during startup (exit code {exit_code}).\n"
             )
+            if stderr:
+                error_msg += f"Error output:\n{stderr}\n"
+            if stdout:
+                error_msg += f"Standard output:\n{stdout}\n"
+            error_msg += "Common issues: missing dependencies, database errors, or Ollama connection problems."
+            raise RuntimeError(error_msg)
 
         time.sleep(1)
 
@@ -356,20 +366,49 @@ def signal_handler(signum, frame):
     sys.exit(0)
 
 
+def setup_logging():
+    """Setup logging to file in app directory for debugging."""
+    app_dir = get_app_dir()
+    log_file = app_dir / "launcher.log"
+
+    # Configure logging to both file and console
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler(log_file, mode="w"),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+    logging.info(f"Logging initialized. Log file: {log_file}")
+    return log_file
+
+
 def launcher_main():
     """Primary entry point for the portable launcher."""
+    try:
+        # Setup logging first
+        log_file = setup_logging()
+        logging.info("=" * 50)
+        logging.info("Open WebUI + Ollama Portable Launcher")
+        logging.info("=" * 50)
+    except Exception as e:
+        # If logging setup fails, at least try to print
+        print(f"Failed to setup logging: {e}")
+        sys.exit(1)
+
     # Register cleanup handlers
     atexit.register(cleanup_processes)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     try:
-        print("=" * 50)
-        print("Open WebUI + Ollama Portable Launcher")
-        print("=" * 50)
 
         # Start services
+        logging.info("Starting Ollama...")
         ollama_p = run_ollama()
+
+        logging.info("Starting WebUI...")
         webui_p = run_webui()
 
         # Get WebUI port from environment
@@ -380,23 +419,24 @@ def launcher_main():
             target=open_browser_delayed, args=(webui_port,), daemon=True
         ).start()
 
-        print("\nServices running!")
-        print(f"Access WebUI at: http://localhost:{webui_port}")
+        logging.info("\nServices running!")
+        logging.info(f"Access WebUI at: http://localhost:{webui_port}")
         ollama_port = os.environ.get("OLLAMA_PORT", "11434")
-        print(f"Ollama API at: http://localhost:{ollama_port}")
-        print("Press Ctrl+C to stop\n")
+        logging.info(f"Ollama API at: http://localhost:{ollama_port}")
+        logging.info("Press Ctrl+C to stop\n")
+        logging.info(f"Log file available at: {log_file}")
 
         # Wait for WebUI process (main process)
         webui_p.wait()
 
     except KeyboardInterrupt:
-        print("\nInterrupted by user")
+        logging.info("\nInterrupted by user")
     except Exception as e:
-        print(f"\nERROR: {e}")
+        logging.error(f"\nERROR: {e}", exc_info=True)
         sys.exit(1)
     finally:
         cleanup_processes()
-        print("Shutdown complete.")
+        logging.info("Shutdown complete.")
 
 
 if __name__ == "__main__":
@@ -405,6 +445,17 @@ if __name__ == "__main__":
         try:
             run_webui_child_mode()
         except Exception as exc:
+            # Log to parent's log file if possible
+            try:
+                app_dir = get_app_dir()
+                log_file = app_dir / "launcher.log"
+                with open(log_file, "a") as f:
+                    f.write(f"\nWEBUI CHILD ERROR: {exc}\n")
+                    import traceback
+
+                    traceback.print_exc(file=f)
+            except:
+                pass
             print(f"\nERROR: {exc}")
             sys.exit(1)
     else:
