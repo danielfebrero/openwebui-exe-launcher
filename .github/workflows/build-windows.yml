@@ -41,7 +41,7 @@ jobs:
           $latest.assets | ForEach-Object { Write-Host " - $($_.name)" }
 
           # Candidate asset filters: prefer non-rocm amd64 builds, but fall back to other 'windows' assets
-          $priorityPatterns = @[ 'windows.*amd64', 'windows.*64', 'windows' ]
+          $priorityPatterns = @('windows.*amd64','windows.*64','windows')
 
           $assetCandidates = @()
           foreach ($p in $priorityPatterns) {
@@ -59,8 +59,11 @@ jobs:
 
           # Try each candidate asset until we find an asset that contains a windows exe.
           $found = $false
+          Write-Host "Number of candidate assets: $($assetCandidates.Count)"
           foreach ($asset in $assetCandidates) {
             $assetName = $asset.name
+
+
             Write-Host "Trying asset: $assetName"
             $url = $asset.browser_download_url
 
@@ -119,7 +122,6 @@ jobs:
 
           if (-not $found) {
             throw "ERROR: Failed to download ollama.exe: none of the windows assets contained an executable (tried $($assetCandidates.Count) candidate(s))."
-          }
           }
 
       - name: Build portable EXE with PyInstaller
@@ -201,6 +203,37 @@ jobs:
           name: openwebui-ollama-portable-windows
           path: OpenWebUI-Ollama-Portable-Windows.zip
           compression-level: 0 # Already compressed
+
+      - name: Upload ollama extraction artifacts (diagnostic)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ollama-diagnostics-windows
+          path: |
+            ollama_temp/**
+            ollama_download*
+            ollama.zip
+            ollama.exe
+
+      - name: Upload built 'dist' when build fails (diagnostic)
+        if: failure()
+        shell: pwsh
+        run: |
+          if (Test-Path "dist") {
+            $zipName = "openwebui-dist-windows.zip"
+            if (Test-Path $zipName) { Remove-Item $zipName -Force }
+            Compress-Archive -Path "dist\*" -DestinationPath $zipName -Force
+            Write-Host "Created $zipName"
+          } else {
+            Write-Host "No dist dir present"
+          }
+
+      - name: Upload 'dist' artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwebui-dist-windows
+          path: openwebui-dist-windows.zip
 
       - name: Upload to release (if tagged)
         if: github.event_name == 'release'

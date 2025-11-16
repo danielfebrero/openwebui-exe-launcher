@@ -34,35 +34,72 @@ jobs:
           LATEST_TAG=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
           echo "Downloading Ollama $LATEST_TAG"
 
-          # Query release assets and prefer anything containing "darwin" (arch-specific or universal)
-          DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/ollama/ollama/releases/latest" \
-            | grep '"browser_download_url"' \
-            | sed -E 's/.*"([^"]+)".*/\1/' \
-            | grep -iE 'darwin|macos' \
-            | head -n 1)
+          echo "Available assets:"
+          curl -s "https://api.github.com/repos/ollama/ollama/releases/latest" | grep '"name"' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/^/ - /' || true
+
+          # Candidate patterns to try in order; prefer arch-specific builds
+          PATTERNS=("darwin.*arm64" "darwin.*amd64" "darwin" "macos")
+
+          DOWNLOAD_URL=""
+          for p in "${PATTERNS[@]}"; do
+            echo "Searching assets matching: $p"
+            DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/ollama/ollama/releases/latest" \
+              | grep '"browser_download_url"' \
+              | sed -E 's/.*"([^"]+)".*/\1/' \
+              | grep -iE "$p" \
+              | head -n 1 || true)
+            if [ -n "$DOWNLOAD_URL" ]; then
+              echo "Selected: $DOWNLOAD_URL"
+              break
+            fi
+          done
 
           if [ -z "$DOWNLOAD_URL" ]; then
             echo "No darwin asset found in release; falling back to 'ollama-darwin'"
             DOWNLOAD_URL="https://github.com/ollama/ollama/releases/download/${LATEST_TAG}/ollama-darwin"
           fi
 
-          # Retry download up to 3 times
+          # Try downloading a single file. If it is an archive, extract and find 'ollama'.
+          TEMP_DIR=$(mktemp -d)
+          OLLAMA_DEBUG_DIR="$(pwd)/ollama_artifacts"
+          mkdir -p "$OLLAMA_DEBUG_DIR"
           for i in 1 2 3; do
             echo "Download attempt $i/3..."
-            if curl -L "$DOWNLOAD_URL" -o ollama; then
-              chmod +x ollama
-              if [ -f "ollama" ] && [ -s "ollama" ]; then
-                echo "✓ ollama binary downloaded successfully"
+            if curl -L "$DOWNLOAD_URL" -o "$TEMP_DIR/ollama_asset"; then
+              file "$TEMP_DIR/ollama_asset" || true
+              # If it's a ZIP or tar(ball), try to extract to find a contained 'ollama' binary
+              if file "$TEMP_DIR/ollama_asset" | grep -qi "zip\|gzip\|tar"; then
+                echo "Archive downloaded; extracting to temp for scan"
+                if unzip -l "$TEMP_DIR/ollama_asset" >/dev/null 2>&1; then
+                  unzip -o "$TEMP_DIR/ollama_asset" -d "$TEMP_DIR/ollama_unpack"
+                else
+                  tar -xf "$TEMP_DIR/ollama_asset" -C "$TEMP_DIR/ollama_unpack" || true
+                fi
+                find "$TEMP_DIR/ollama_unpack" -type f -iname '*ollama*' -print -exec cp {} "$OLLAMA_DEBUG_DIR/" \; -quit || true
+              else
+                # It's already a binary, move/rename for PyInstaller
+                mv "$TEMP_DIR/ollama_asset" "$OLLAMA_DEBUG_DIR/ollama"
+              fi
+
+              if [ -f "$OLLAMA_DEBUG_DIR/ollama" ] && [ -s "$OLLAMA_DEBUG_DIR/ollama" ]; then
+                chmod +x "$OLLAMA_DEBUG_DIR/ollama" || true
+                # copy to repo root so PyInstaller can include it
+                cp "$OLLAMA_DEBUG_DIR/ollama" ollama || true
+                echo "✓ ollama binary prepared"
                 break
               fi
             fi
+
             if [ $i -eq 3 ]; then
               echo "ERROR: ollama download failed after 3 attempts"
               exit 1
             fi
+
             echo "Retrying in 5 seconds..."
             sleep 5
           done
+          # Do not remove the debug folder here - we'll upload it as an artifact afterwards
+          rm -rf "$TEMP_DIR" || true
 
       - name: Build portable .app with PyInstaller
         run: |
@@ -82,6 +119,7 @@ jobs:
           brew install create-dmg
 
           # Create DMG without icon reference (no icon bundled)
+          # create-dmg can be picky about the --icon argument. If it fails we'll fall back to hdiutil.
           create-dmg \
             --volname "OpenWebUI-Ollama-Portable" \
             --window-pos 200 120 \
@@ -111,6 +149,12 @@ jobs:
           fi
 
           # Basic verification: ensure the contained ollama binary exists and is executable
+          # To help debug packaging, list what's inside the app bundle (Contents/MacOS and Resources)
+          echo "Contents of app bundle (Contents/MacOS):"
+          ls -la "dist/OpenWebUI-Ollama.app/Contents/MacOS" || true
+          echo "Contents of app bundle (Resources):"
+          ls -la "dist/OpenWebUI-Ollama.app/Contents/Resources" || true
+
           if [ -f "dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama" ]; then
             echo "Found bundled ollama binary inside app:" 
             ls -l "dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama"
@@ -118,6 +162,32 @@ jobs:
             echo "ERROR: ollama binary not found inside the .app bundle"
             exit 1
           fi
+
+      - name: Create archive of dist for diagnostics (macOS)
+        if: failure()
+        run: |
+          if [ -d "dist" ]; then
+            tar -czf openwebui-dist-macos.tgz dist
+            echo "Created openwebui-dist-macos.tgz"
+          else
+            echo "No dist/ directory to archive"
+          fi
+
+      - name: Upload 'dist' artifact on failure (macOS)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwebui-dist-macos
+          path: openwebui-dist-macos.tgz
+
+      - name: Upload ollama extraction artifacts (diagnostic)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ollama-diagnostics-macos
+          path: |
+            ollama_artifacts/**
+            ollama
 
       - name: Create README for macOS
         run: |

@@ -29,17 +29,39 @@ if [ ! -f "ollama" ]; then
     echo "Downloading Ollama binary..."
     LATEST_TAG=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
     echo "Latest version: $LATEST_TAG"
-    DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/ollama/ollama/releases/latest" \
-        | grep '"browser_download_url"' \
-        | sed -E 's/.*"([^"]+)".*/\1/' \
-        | grep -i darwin \
-        | head -n 1)
+    # Prefer arch-specific darwin builds; fall back to generic darwin/macos naming
+    DOWNLOAD_URL=""
+    for p in "darwin.*arm64" "darwin.*amd64" "darwin" "macos"; do
+        DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/ollama/ollama/releases/latest" \
+            | grep '"browser_download_url"' \
+            | sed -E 's/.*"([^"]+)".*/\1/' \
+            | grep -iE "$p" || true)
+        if [ -n "$DOWNLOAD_URL" ]; then
+            DOWNLOAD_URL=$(echo "$DOWNLOAD_URL" | head -n 1)
+            break
+        fi
+    done
 
     if [ -z "$DOWNLOAD_URL" ]; then
         DOWNLOAD_URL="https://github.com/ollama/ollama/releases/download/${LATEST_TAG}/ollama-darwin"
     fi
 
-    curl -L "$DOWNLOAD_URL" -o ollama
+    TMPDIR=$(mktemp -d)
+    curl -L "$DOWNLOAD_URL" -o "$TMPDIR/ollama_asset"
+    # If the asset appears to be an archive, extract it and try to find the binary
+    if file "$TMPDIR/ollama_asset" | grep -qi "zip\|gzip\|tar"; then
+        echo "Archive detected; extracting to $TMPDIR"
+        if unzip -l "$TMPDIR/ollama_asset" >/dev/null 2>&1; then
+            unzip -o "$TMPDIR/ollama_asset" -d "$TMPDIR/ollama_unpack"
+        else
+            tar -xf "$TMPDIR/ollama_asset" -C "$TMPDIR/ollama_unpack" || true
+        fi
+        find "$TMPDIR/ollama_unpack" -type f -iname '*ollama*' -print -exec cp {} ollama \; -quit || true
+    else
+        mv "$TMPDIR/ollama_asset" ollama
+    fi
+    # Cleanup
+    rm -rf "$TMPDIR" || true
     chmod +x ollama
     echo "✓ Ollama downloaded"
 else
@@ -65,6 +87,10 @@ if [ -d "dist/OpenWebUI-Ollama.app" ]; then
     echo ""
     echo "To run:"
     echo "  open dist/OpenWebUI-Ollama.app"
+    echo "Listing Contents/MacOS inside app bundle for debug:"
+    ls -la "dist/OpenWebUI-Ollama.app/Contents/MacOS" || true
+    echo "Listing Contents/Resources inside app bundle for debug:"
+    ls -la "dist/OpenWebUI-Ollama.app/Contents/Resources" || true
 else
     echo "ERROR: Build failed"
     exit 1
