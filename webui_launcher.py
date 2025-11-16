@@ -7,31 +7,75 @@ import sys
 import os
 from typing import Any
 
-# `main` is a callable provided by open_webui.__main__ or a fallback
-# Avoid conflicting with the `main` symbol imported from open_webui.__main__
-# — use `main_func` to store a callable we can safely execute.
 main_func = None
 
-
-# Ensure open-webui can be imported
-# Try multiple methods to run open-webui
-def run_via_cli():
-    """Run open-webui using its CLI interface"""
-    import runpy
-
-    # This runs the module as if invoked with: python -m open_webui
-    runpy.run_module("open_webui", run_name="__main__")
-
-
+# Open WebUI is typically run via its CLI entry point defined in pyproject.toml
+# Try to find and use the proper entry point
 try:
-    from open_webui.__main__ import main as openwebui_main
+    # Try the main entry point - open-webui uses a CLI via main.py
+    from open_webui.main import app
 
-    main_func = openwebui_main
-    print("[WebUI Init] Successfully imported open_webui.__main__.main")
+    print("[WebUI Init] Successfully imported open_webui.main.app")
+
+    def run_uvicorn_server():
+        """Run the FastAPI app using uvicorn"""
+        import uvicorn
+
+        port = int(os.environ.get("OPENWEBUI_PORT", "3000"))
+        host = os.environ.get("OPENWEBUI_HOST", "127.0.0.1")
+
+        print(f"[WebUI Init] Starting uvicorn server on {host}:{port}")
+        uvicorn.run(app, host=host, port=port, log_level="info", access_log=True)
+
+    main_func = run_uvicorn_server
+
 except ImportError as e:
-    print(f"[WebUI Init] Could not import open_webui.__main__.main: {e}")
-    # Use the CLI runner as fallback
-    main_func = run_via_cli
+    print(f"[WebUI Init] Could not import open_webui.main.app: {e}")
+
+    # Fallback: try to import the app from other common locations
+    try:
+        from open_webui.apps.webui.main import app
+
+        print("[WebUI Init] Successfully imported open_webui.apps.webui.main.app")
+
+        def run_uvicorn_server():
+            import uvicorn
+
+            port = int(os.environ.get("OPENWEBUI_PORT", "3000"))
+            host = os.environ.get("OPENWEBUI_HOST", "127.0.0.1")
+            uvicorn.run(app, host=host, port=port, log_level="info")
+
+        main_func = run_uvicorn_server
+    except ImportError as e2:
+        print(f"[WebUI Init] Could not import from apps.webui.main: {e2}")
+        print("[WebUI Init] ERROR: Unable to locate open-webui application")
+
+        # Fallback ultime : assume open-webui est installé globalement ou via sys.path
+        import sys
+
+        sys.path.insert(
+            0, str(Path(__file__).parent / "open_webui")
+        )  # Si bundle a un sous-dossier open_webui
+        try:
+            from open_webui.backend.main import (
+                app,
+            )  # Autre chemin possible dans certaines versions
+
+            print("[WebUI Init] Successfully imported open_webui.backend.main.app")
+
+            def run_uvicorn_server():
+                import uvicorn
+
+                port = int(os.environ.get("OPENWEBUI_PORT", "3000"))
+                host = os.environ.get("OPENWEBUI_HOST", "127.0.0.1")
+                uvicorn.run(app, host=host, port=port, log_level="info")
+
+            main_func = run_uvicorn_server
+        except ImportError as e3:
+            print(f"[WebUI Init] All import attempts failed: {e3}")
+            print(
+                "[WebUI Init] Check if 'pip install open-webui' is needed in the bundle env."
+            )
 
 
 def run_webui_server():
