@@ -54,7 +54,6 @@ jobs:
             --add-binary "ollama.exe:." `
             --add-data "webui_launcher.py:." `
             --hidden-import "open_webui" `
-            --hidden-import "open_webui.__main__" `
             --hidden-import "sqlite3" `
             --hidden-import "uvicorn" `
             --hidden-import "fastapi" `
