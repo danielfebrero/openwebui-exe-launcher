@@ -12,10 +12,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
+for /f "tokens=*" %%i in ('python -c "import platform; print(platform.python_version())"') do set PY_VERSION=%%i
+python -c "import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)"
+if errorlevel 1 (
+    echo ERROR: Python 3.11 or newer is required ^(found %PY_VERSION%^)
+    exit /b 1
+)
+
 REM Install dependencies
 echo Installing Python dependencies...
-pip install -r requirements.txt
-pip install pyinstaller
+python -m pip install -r requirements.txt
+python -m pip install pyinstaller
 
 REM Download Ollama binary if not present
 if not exist "ollama.exe" (

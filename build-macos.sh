@@ -13,10 +13,16 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+    VERSION_OUTPUT=$(python3 --version 2>&1 || echo "unknown version")
+    echo "ERROR: Python 3.11 or newer is required (found ${VERSION_OUTPUT})"
+    exit 1
+fi
+
 # Install dependencies
 echo "Installing Python dependencies..."
-pip3 install -r requirements.txt
-pip3 install pyinstaller
+python3 -m pip install -r requirements.txt
+python3 -m pip install pyinstaller
 
 # Download Ollama binary if not present
 if [ ! -f "ollama" ]; then

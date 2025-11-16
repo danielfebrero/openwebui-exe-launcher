@@ -102,9 +102,7 @@ def run_webui_child_mode():
     try:
         from webui_launcher import run_webui_server
     except ImportError as exc:
-        raise RuntimeError(
-            "Failed to import bundled WebUI launcher."
-        ) from exc
+        raise RuntimeError("Failed to import bundled WebUI launcher.") from exc
 
     run_webui_server()
 
@@ -124,11 +122,17 @@ def run_ollama():
     app_dir = get_app_dir()
     ollama_dir = app_dir / ".ollama"
     models_dir = ollama_dir / "models"
+    cache_dir = ollama_dir / "cache"
+    ollama_dir.mkdir(parents=True, exist_ok=True)
     models_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Configure Ollama to use portable directories
     env = os.environ.copy()
+    # Keep all Ollama state on the portable drive rather than the host machine
+    env["OLLAMA_HOME"] = str(ollama_dir)
     env["OLLAMA_MODELS"] = str(models_dir)
+    env["OLLAMA_CACHE"] = str(cache_dir)
     # Disable debug for production (set to "1" to enable GPU/CPU logs)
     env["OLLAMA_DEBUG"] = "0"
 
