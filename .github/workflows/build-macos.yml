@@ -29,9 +29,15 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      # NOTE: we already downloaded 'ollama' prior to building the app. The steps
-      # that previously appeared here were duplicate and have been removed to
-      # avoid downloading on both pre- and post-build stages.
+      - name: Lint download script (bash syntax only)
+        shell: bash
+        run: |
+          bash -n ci/download-ollama.sh
+
+      - name: Download Ollama binary (latest)
+        shell: bash
+        run: |
+          bash ci/download-ollama.sh
 
       - name: Build portable .app with PyInstaller
         run: |
@@ -44,16 +50,6 @@ jobs:
             echo "ERROR: Build failed - .app bundle not found"
             exit 1
           fi
-
-      - name: Lint download script (bash syntax only)
-        shell: bash
-        run: |
-          bash -n ci/download-ollama.sh
-
-      - name: Download Ollama binary (latest)
-        shell: bash
-        run: |
-          bash ci/download-ollama.sh
 
       - name: Create portable DMG package
         run: |
