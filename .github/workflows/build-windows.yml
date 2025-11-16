@@ -46,6 +46,14 @@ jobs:
         run: |
           pwsh -NoProfile -File ci/download-ollama-windows.ps1
 
+      - name: Build portable Windows app (PyInstaller)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "ollama.exe")) {
+            throw "ollama.exe missing; download step must succeed before building."
+          }
+          pyinstaller --noconfirm openwebui-portable.spec
+
       - name: Create portable ZIP package
         shell: pwsh
         run: |
