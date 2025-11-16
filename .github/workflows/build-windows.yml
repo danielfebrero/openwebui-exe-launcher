@@ -28,9 +28,11 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Harvest GPU-Blessed Ollama Binary (v0.3.12)
+      - name: Divine Latest Ollama
         run: |
-          Invoke-WebRequest -Uri "https://github.com/ollama/ollama/releases/download/v0.3.12/ollama-windows-amd64.exe" -OutFile "ollama.exe"
+          $latestTag = (Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest").tag_name
+          $url = "https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.exe"
+          Invoke-WebRequest -Uri $url -OutFile "ollama.exe"
 
       - name: Entomb in Bundled .EXE
         run: |
