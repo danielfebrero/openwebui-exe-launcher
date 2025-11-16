@@ -36,7 +36,7 @@ jobs:
 
       - name: Entomb in Bundled .EXE
         run: |
-          pyinstaller --onefile --windowed --name OpenWebUIOllamaGPULauncher --add-binary "ollama.exe;." main.py
+          pyinstaller --onefile --windowed --name OpenWebUIOllamaGPULauncher --add-binary "ollama.exe:." main.py
 
       - name: Upload Relic
         uses: actions/upload-artifact@v4
