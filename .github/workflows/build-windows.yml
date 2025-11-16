@@ -1,4 +1,4 @@
-name: Forge GPU/CPU .EXE with Ollama Entombment
+name: Build Portable Windows EXE (Ollama + Open WebUI)
 
 on:
   push:
@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: [3.11]
+        python-version: ["3.11"]
 
     steps:
       - uses: actions/checkout@v4
@@ -23,38 +23,105 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Python Shadows
+      - name: Install Python dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Harvest & Unpack GPU-Blessed Ollama Binary (Latest)
+      - name: Download Ollama binary (latest)
         shell: pwsh
         run: |
           $latestTag = (Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest").tag_name
-          Write-Host "Latest tag: $latestTag"  # Debug whisper
+          Write-Host "Downloading Ollama $latestTag"
           $url = "https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.zip"
           Invoke-WebRequest -Uri $url -OutFile "ollama.zip"
           Expand-Archive -Path "ollama.zip" -DestinationPath "." -Force
-          if (Test-Path "ollama.exe") { Write-Host "Ollama.exe exhumed – GPU kernels primed." } else { throw "Exhumation failed: ollama.exe absent." }
+          if (Test-Path "ollama.exe") { 
+            Write-Host "✓ ollama.exe downloaded successfully" 
+          } else { 
+            throw "ERROR: ollama.exe not found after extraction" 
+          }
 
-      - name: Entomb in Bundled .EXE
+      - name: Build portable EXE with PyInstaller
+        shell: pwsh
         run: |
-          pyinstaller --onefile --windowed --name OpenWebUIOllamaGPULauncher --add-binary "ollama.exe:." main.py
+          # Build with console for debugging and portability
+          # Use --onedir for better compatibility with bundled Python modules
+          pyinstaller --onedir `
+            --console `
+            --name "OpenWebUI-Ollama-Portable" `
+            --add-binary "ollama.exe:." `
+            --add-data "webui_launcher.py:." `
+            --hidden-import "open_webui" `
+            --hidden-import "open_webui.__main__" `
+            --hidden-import "sqlite3" `
+            --hidden-import "uvicorn" `
+            --hidden-import "fastapi" `
+            --collect-all "open_webui" `
+            --noconfirm `
+            main.py
 
-      - name: Upload Relic
+          if (Test-Path "dist\OpenWebUI-Ollama-Portable\OpenWebUI-Ollama-Portable.exe") {
+            Write-Host "✓ Build successful"
+          } else {
+            throw "ERROR: Build failed - executable not found"
+          }
+
+      - name: Create portable ZIP package
+        shell: pwsh
+        run: |
+          # Create a clean portable package
+          $packageName = "OpenWebUI-Ollama-Portable-Windows"
+          New-Item -ItemType Directory -Force -Path $packageName
+
+          # Copy the built application
+          Copy-Item -Recurse "dist\OpenWebUI-Ollama-Portable\*" "$packageName\"
+
+          # Create README for users
+          @"
+          # Open WebUI + Ollama Portable Launcher
+
+          ## Quick Start
+          1. Extract this entire folder to a USB drive or any location
+          2. Run OpenWebUI-Ollama-Portable.exe
+          3. Wait for the browser to open automatically
+          4. Access the interface at http://localhost:3000
+
+          ## Features
+          - Fully portable - runs from USB drive
+          - No installation required
+          - Leaves no traces on the host computer
+          - All data stored in the application folder
+
+          ## Data Locations
+          - Models: .ollama/models/
+          - User data: data/
+
+          ## Troubleshooting
+          - If ports 11434 or 3000 are in use, close other applications
+          - Firewall may ask for permission - click Allow
+          - First model download will take time
+
+          ## Shutdown
+          Press Ctrl+C in the console window or close the window
+          "@ | Out-File -FilePath "$packageName\README.txt" -Encoding utf8
+
+          # Create ZIP
+          Compress-Archive -Path $packageName -DestinationPath "$packageName.zip" -Force
+          Write-Host "✓ Portable package created: $packageName.zip"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: owui-ollama-gpu-windows-exe
-          path: dist/OpenWebUIOllamaGPULauncher.exe
+          name: openwebui-ollama-portable-windows
+          path: OpenWebUI-Ollama-Portable-Windows.zip
+          compression-level: 0 # Already compressed
 
-      - name: Release Vortex if Tagged
+      - name: Upload to release (if tagged)
         if: github.event_name == 'release'
-        uses: actions/create-release@v1
+        uses: softprops/action-gh-release@v1
+        with:
+          files: OpenWebUI-Ollama-Portable-Windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: GPU-Attuned Release ${{ github.ref }}
-          draft: false
-          prerelease: false
