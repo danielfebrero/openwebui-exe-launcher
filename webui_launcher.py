@@ -1,15 +1,86 @@
 #!/usr/bin/env python3
-"""Portable launcher for Open WebUI.
-
-This script is bundled with PyInstaller and is responsible for
-invoking the official ``open-webui`` CLI entry point inside the
-frozen environment.
 """
-
-import os
+Launcher script for Open WebUI - used by the portable executable.
+This script is bundled with PyInstaller to enable open-webui execution.
+"""
 import sys
-
+import os
+from pathlib import Path
 from typing import Any
+
+main_func = None
+
+# Open WebUI is typically run via its CLI entry point defined in pyproject.toml
+# Try to find and use the proper entry point
+try:
+    # Try the main entry point - open-webui uses a CLI via main.py
+    from open_webui.main import app
+
+    print("[WebUI Init] Successfully imported open_webui.main.app")
+
+    def run_uvicorn_server():
+        """Run the FastAPI app using uvicorn"""
+        import uvicorn
+
+        port = int(os.environ.get("OPENWEBUI_PORT", "3000"))
+        host = os.environ.get("OPENWEBUI_HOST", "127.0.0.1")
+
+        print(f"[WebUI Init] Starting uvicorn server on {host}:{port}")
+        uvicorn.run(app, host=host, port=port, log_level="info", access_log=True)
+
+    main_func = run_uvicorn_server
+
+except ImportError as e:
+    print(f"[WebUI Init] Could not import open_webui.main.app: {e}")
+    if getattr(e, "name", "") == "numpy" or "numpy" in str(e):
+        print(
+            "[WebUI Init] Missing dependency detected: numpy. Add it to requirements and rebuild the portable bundle."
+        )
+
+    # Fallback: try to import the app from other common locations
+    try:
+        from open_webui.apps.webui.main import app
+
+        print("[WebUI Init] Successfully imported open_webui.apps.webui.main.app")
+
+        def run_uvicorn_server():
+            import uvicorn
+
+            port = int(os.environ.get("OPENWEBUI_PORT", "3000"))
+            host = os.environ.get("OPENWEBUI_HOST", "127.0.0.1")
+            uvicorn.run(app, host=host, port=port, log_level="info")
+
+        main_func = run_uvicorn_server
+    except ImportError as e2:
+        print(f"[WebUI Init] Could not import from apps.webui.main: {e2}")
+        print("[WebUI Init] ERROR: Unable to locate open-webui application")
+
+        # Fallback ultime : assume open-webui est installé globalement ou via sys.path
+        import sys
+
+        sys.path.insert(
+            0, str(Path(__file__).parent / "open_webui")
+        )  # Si bundle a un sous-dossier open_webui
+        try:
+            from open_webui.backend.main import (
+                app,
+            )  # Autre chemin possible dans certaines versions
+
+            print("[WebUI Init] Successfully imported open_webui.backend.main.app")
+
+            def run_uvicorn_server():
+                import uvicorn
+
+                port = int(os.environ.get("OPENWEBUI_PORT", "3000"))
+                host = os.environ.get("OPENWEBUI_HOST", "127.0.0.1")
+                uvicorn.run(app, host=host, port=port, log_level="info")
+
+            main_func = run_uvicorn_server
+        except ImportError as e3:
+            print(f"[WebUI Init] All import attempts failed: {e3}")
+            print(
+                "[WebUI Init] Check if 'pip install open-webui' is needed in the bundle env."
+            )
 
 
 def run_webui_server():
@@ -28,17 +99,25 @@ def run_webui_server():
     print(f"[WebUI Child] Python executable: {sys.executable}")
     print(f"[WebUI Child] Python version: {sys.version}")
 
-    try:
-        # Set default arguments for open-webui serve and invoke the
-        # package's CLI entry point. This mirrors running
-        # ``open-webui serve --port ... --host ...`` from the shell,
-        # but works inside the frozen bundle.
-        sys.argv = ["open-webui", "serve", "--port", port, "--host", host]
-        print(f"[WebUI Child] Command args: {sys.argv}")
-        sys.stdout.flush()
-        from open_webui.__main__ import main
+    # Set default arguments for open-webui serve
+    sys.argv = ["open-webui", "serve", "--port", port, "--host", host]
+    print(f"[WebUI Child] Command args: {sys.argv}")
 
-        main()
+    try:
+        if main_func is None:
+            raise RuntimeError("No webui entry point found")
+        print(f"[WebUI Child] Calling main_func...")
+        sys.stdout.flush()
+
+        # Call the main function - it should block and run the server
+        result = main_func()
+
+        # If we get here, the server exited unexpectedly
+        print(f"[WebUI Child] main_func returned unexpectedly with result: {result}")
+        sys.stdout.flush()
+
+        # Exit with error code since the server shouldn't exit
+        sys.exit(1)
 
     except SystemExit as e:
         # If open-webui calls sys.exit, re-raise it
