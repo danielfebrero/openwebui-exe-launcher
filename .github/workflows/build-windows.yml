@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ["3.11"]
+        python-version: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -32,15 +32,49 @@ jobs:
       - name: Download Ollama binary (latest)
         shell: pwsh
         run: |
-          $latestTag = (Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest").tag_name
+          $latest = Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest"
+          $latestTag = $latest.tag_name
           Write-Host "Downloading Ollama $latestTag"
-          $url = "https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.zip"
-          Invoke-WebRequest -Uri $url -OutFile "ollama.zip"
-          Expand-Archive -Path "ollama.zip" -DestinationPath "." -Force
-          if (Test-Path "ollama.exe") { 
-            Write-Host "✓ ollama.exe downloaded successfully" 
-          } else { 
-            throw "ERROR: ollama.exe not found after extraction" 
+
+          # Prefer a windows-amd64 zip asset, but fall back to any asset that contains windows
+          $asset = $latest.assets | Where-Object { $_.name -match 'windows' -and $_.name -match 'zip' } | Select-Object -First 1
+          if (-not $asset) {
+            # Fallback: try amd64 zip specifically
+            $asset = $latest.assets | Where-Object { $_.name -match 'windows' } | Select-Object -First 1
+          }
+          if ($asset) {
+            $url = $asset.browser_download_url
+          } else {
+            Write-Host "WARNING: No windows asset found in release; falling back to default name"
+            $url = "https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.zip"
+          }
+
+          # Retry download up to 3 times
+          $maxRetries = 3
+          for ($i = 1; $i -le $maxRetries; $i++) {
+            try {
+              Write-Host "Download attempt $i/$maxRetries..."
+              Invoke-WebRequest -Uri $url -OutFile "ollama.zip" -ErrorAction Stop
+              Expand-Archive -Path "ollama.zip" -DestinationPath "ollama_temp" -Force
+              
+              # Find ollama.exe in extracted files (may be in subdirectory)
+              $ollamaExe = Get-ChildItem -Path "ollama_temp" -Filter "ollama.exe" -Recurse | Select-Object -First 1
+              if ($ollamaExe) {
+                Copy-Item $ollamaExe.FullName -Destination "ollama.exe" -Force
+                Remove-Item "ollama_temp" -Recurse -Force
+                Remove-Item "ollama.zip" -Force
+                Write-Host "✓ ollama.exe downloaded successfully"
+                break
+              } else {
+                throw "ollama.exe not found in archive"
+              }
+            } catch {
+              if ($i -eq $maxRetries) {
+                throw "ERROR: Failed to download ollama.exe after $maxRetries attempts: $_"
+              }
+              Write-Host "Retrying in 5 seconds..."
+              Start-Sleep -Seconds 5
+            }
           }
 
       - name: Build portable EXE with PyInstaller
@@ -109,6 +143,17 @@ jobs:
           # Create ZIP
           Compress-Archive -Path $packageName -DestinationPath "$packageName.zip" -Force
           Write-Host "✓ Portable package created: $packageName.zip"
+
+      - name: Cleanup on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Host "Cleaning up build artifacts..."
+          Remove-Item -Path "ollama.exe" -ErrorAction SilentlyContinue
+          Remove-Item -Path "ollama.zip" -ErrorAction SilentlyContinue
+          Remove-Item -Path "ollama_temp" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "dist" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "build" -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

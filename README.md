@@ -243,4 +243,4 @@ This project is a launcher/wrapper. Component licenses:
 
 ---
 
-**Made with ❤️ for portable AI**
+## Made with ❤️ for portable AI

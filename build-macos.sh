@@ -29,8 +29,17 @@ if [ ! -f "ollama" ]; then
     echo "Downloading Ollama binary..."
     LATEST_TAG=$(curl -s https://api.github.com/repos/ollama/ollama/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
     echo "Latest version: $LATEST_TAG"
-    URL="https://github.com/ollama/ollama/releases/download/${LATEST_TAG}/ollama-darwin"
-    curl -L "$URL" -o ollama
+    DOWNLOAD_URL=$(curl -s "https://api.github.com/repos/ollama/ollama/releases/latest" \
+        | grep '"browser_download_url"' \
+        | sed -E 's/.*"([^"]+)".*/\1/' \
+        | grep -i darwin \
+        | head -n 1)
+
+    if [ -z "$DOWNLOAD_URL" ]; then
+        DOWNLOAD_URL="https://github.com/ollama/ollama/releases/download/${LATEST_TAG}/ollama-darwin"
+    fi
+
+    curl -L "$DOWNLOAD_URL" -o ollama
     chmod +x ollama
     echo "✓ Ollama downloaded"
 else

@@ -55,9 +55,10 @@ def build_self_command(extra_args=None):
 
 def is_port_in_use(port):
     """Check if a port is already in use."""
+    # Use an explicit IPv4 localhost to avoid IPv6 resolution issues with "localhost"
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
-            s.bind(("localhost", port))
+            s.bind(("127.0.0.1", port))
             return False
         except OSError:
             return True
@@ -111,12 +112,19 @@ def run_ollama():
     """Start Ollama server with portable data directory."""
     global ollama_process
 
-    # Check if port is already in use
-    if is_port_in_use(11434):
+    # Find available port starting from 11434
+    ollama_port = 11434
+    for port_attempt in range(11434, 11444):
+        if not is_port_in_use(port_attempt):
+            ollama_port = port_attempt
+            break
+    else:
         raise RuntimeError(
-            "Port 11434 is already in use. Another Ollama instance may be running.\n"
-            "Please close it and try again."
+            "Ports 11434-11443 are all in use. Please close other applications and try again."
         )
+
+    if ollama_port != 11434:
+        print(f"Port 11434 in use, using alternate port {ollama_port}")
 
     # Setup portable directories on USB drive
     app_dir = get_app_dir()
@@ -133,6 +141,7 @@ def run_ollama():
     env["OLLAMA_HOME"] = str(ollama_dir)
     env["OLLAMA_MODELS"] = str(models_dir)
     env["OLLAMA_CACHE"] = str(cache_dir)
+    env["OLLAMA_HOST"] = f"127.0.0.1:{ollama_port}"
     # Disable debug for production (set to "1" to enable GPU/CPU logs)
     env["OLLAMA_DEBUG"] = "0"
 
@@ -157,27 +166,35 @@ def run_ollama():
 
     # Wait for Ollama API to be ready
     print("Waiting for Ollama API to start...")
+    ollama_url = f"http://127.0.0.1:{ollama_port}"
     for attempt in range(60):
         try:
-            response = requests.get("http://localhost:11434/api/tags", timeout=1)
+            response = requests.get(f"{ollama_url}/api/tags", timeout=1)
             if response.status_code == 200:
-                print("Ollama API is ready!")
+                print(f"Ollama API is ready at {ollama_url}!")
+                # Store port for WebUI to use
+                env["OLLAMA_PORT"] = str(ollama_port)
+                # Make sure the running process also knows the port so the WebUI
+                # launcher (spawned separately) can pick it up from the environment.
+                os.environ["OLLAMA_PORT"] = str(ollama_port)
                 return ollama_process
         except (requests.RequestException, ConnectionError):
             pass
 
         # Check if process crashed
         if ollama_process.poll() is not None:
+            exit_code = ollama_process.returncode
             raise RuntimeError(
-                "Ollama process terminated unexpectedly. "
-                "See console output for details."
+                f"Ollama process crashed during startup (exit code {exit_code}). "
+                "Check console output above for error details. "
+                "Common issues: GPU driver problems, insufficient permissions, or corrupted binary."
             )
 
         time.sleep(1)
 
     raise RuntimeError(
-        "Ollama failed to start within 60 seconds.\n"
-        "Check if port 11434 is blocked by firewall or antivirus."
+        f"Ollama failed to start within 60 seconds at {ollama_url}.\n"
+        f"Check if port {ollama_port} is blocked by firewall or antivirus."
     )
 
 
@@ -185,11 +202,19 @@ def run_webui():
     """Start Open WebUI server with portable data directory."""
     global webui_process
 
-    # Check if port is already in use
-    if is_port_in_use(3000):
+    # Find available port starting from 3000
+    webui_port = 3000
+    for port_attempt in range(3000, 3010):
+        if not is_port_in_use(port_attempt):
+            webui_port = port_attempt
+            break
+    else:
         raise RuntimeError(
-            "Port 3000 is already in use. Please close the application using it."
+            "Ports 3000-3009 are all in use. Please close other applications and try again."
         )
+
+    if webui_port != 3000:
+        print(f"Port 3000 in use, using alternate port {webui_port}")
 
     # Setup portable data directory on USB drive
     app_dir = get_app_dir()
@@ -199,7 +224,11 @@ def run_webui():
     # Configure Open WebUI
     env = os.environ.copy()
     env["DATA_DIR"] = str(data_dir)
-    env["OLLAMA_API_BASE"] = "http://localhost:11434"
+    # Use dynamic Ollama port from environment or default
+    ollama_port = os.environ.get("OLLAMA_PORT", "11434")
+    env["OLLAMA_API_BASE"] = f"http://127.0.0.1:{ollama_port}"
+    env["OPENWEBUI_PORT"] = str(webui_port)
+    env["OPENWEBUI_HOST"] = "127.0.0.1"
 
     print(f"Data directory: {data_dir}")
     print("Starting Open WebUI...")
@@ -221,39 +250,44 @@ def run_webui():
         raise RuntimeError(f"Failed to start WebUI process: {e}")
 
     # Wait for WebUI to be ready
-    print("Waiting for WebUI to start...")
+    print(f"Waiting for WebUI to start on port {webui_port}...")
+    webui_url = f"http://127.0.0.1:{webui_port}"
     for attempt in range(30):
         try:
-            response = requests.get("http://localhost:3000", timeout=1)
+            response = requests.get(webui_url, timeout=1)
             if response.status_code in (
                 200,
                 404,
                 302,
             ):  # Any response means it's running
-                print("WebUI is ready!")
+                print(f"WebUI is ready at {webui_url}!")
                 return webui_process
         except (requests.RequestException, ConnectionError):
             pass
 
         # Check if process crashed
         if webui_process.poll() is not None:
+            exit_code = webui_process.returncode
             raise RuntimeError(
-                "WebUI process terminated unexpectedly. "
-                "See console output for details."
+                f"WebUI process crashed during startup (exit code {exit_code}). "
+                "Check console output above for error details. "
+                "Common issues: missing dependencies, database errors, or Ollama connection problems."
             )
 
         time.sleep(1)
 
     raise RuntimeError(
-        "WebUI failed to start within 30 seconds.\n" "Check if port 3000 is blocked."
+        f"WebUI failed to start within 30 seconds at {webui_url}.\n"
+        f"Check if port {webui_port} is blocked or if there are dependency issues."
     )
 
 
-def open_browser_delayed():
+def open_browser_delayed(port=3000):
     """Open browser after ensuring WebUI is fully ready."""
     time.sleep(3)
-    print("Opening browser...")
-    webbrowser.open("http://localhost:3000")
+    webui_url = f"http://localhost:{port}"
+    print(f"Opening browser to {webui_url}...")
+    webbrowser.open(webui_url)
 
 
 def signal_handler(signum, frame):
@@ -279,11 +313,18 @@ def launcher_main():
         ollama_p = run_ollama()
         webui_p = run_webui()
 
+        # Get WebUI port from environment
+        webui_port = int(os.environ.get("OPENWEBUI_PORT", "3000"))
+
         # Open browser in background
-        threading.Thread(target=open_browser_delayed, daemon=True).start()
+        threading.Thread(
+            target=open_browser_delayed, args=(webui_port,), daemon=True
+        ).start()
 
         print("\nServices running!")
-        print("Access WebUI at: http://localhost:3000")
+        print(f"Access WebUI at: http://localhost:{webui_port}")
+        ollama_port = os.environ.get("OLLAMA_PORT", "11434")
+        print(f"Ollama API at: http://localhost:{ollama_port}")
         print("Press Ctrl+C to stop\n")
 
         # Wait for WebUI process (main process)

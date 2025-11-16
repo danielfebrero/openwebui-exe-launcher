@@ -27,7 +27,7 @@ python -m pip install pyinstaller
 REM Download Ollama binary if not present
 if not exist "ollama.exe" (
     echo Downloading Ollama binary...
-    powershell -Command "$ProgressPreference = 'SilentlyContinue'; $latestTag = (Invoke-RestMethod -Uri 'https://api.github.com/repos/ollama/ollama/releases/latest').tag_name; Write-Host \"Latest version: $latestTag\"; $url = \"https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.zip\"; Invoke-WebRequest -Uri $url -OutFile 'ollama.zip'; Expand-Archive -Path 'ollama.zip' -DestinationPath '.' -Force; Remove-Item 'ollama.zip'"
+    powershell -Command "$ProgressPreference = 'SilentlyContinue'; $latest = Invoke-RestMethod -Uri 'https://api.github.com/repos/ollama/ollama/releases/latest'; $latestTag = $latest.tag_name; Write-Host \"Latest version: $latestTag\"; $asset = $latest.assets | Where-Object { $_.name -match 'windows' -and $_.name -match 'zip' } | Select-Object -First 1; if (-not $asset) { $asset = $latest.assets | Where-Object { $_.name -match 'windows' } | Select-Object -First 1 }; if ($asset) { $url = $asset.browser_download_url } else { $url = \"https://github.com/ollama/ollama/releases/download/$latestTag/ollama-windows-amd64.zip\" }; Invoke-WebRequest -Uri $url -OutFile 'ollama.zip'; Expand-Archive -Path 'ollama.zip' -DestinationPath '.' -Force; Remove-Item 'ollama.zip'"
     echo ✓ Ollama downloaded
 ) else (
     echo ✓ Ollama binary already exists
