@@ -28,10 +28,6 @@ $assetCandidates = $assetCandidates | Select-Object -Unique
 # Exclude GPU/library-specific bundles that do not contain an executable, like ROCm/CUDA builds
 # These builds often contain only native libraries (DLL/so/hsaco) and not the `ollama.exe` runtime
 $assetCandidates = $assetCandidates | Where-Object { $_.name -notmatch 'rocm|cuda|hip|ggml|lib' }
-foreach ($p in $priorityPatterns) {
-    $assetCandidates += $latest.assets | Where-Object { $_.name -match $p }
-}
-$assetCandidates = $assetCandidates | Select-Object -Unique
 
 if (-not $assetCandidates -or $assetCandidates.Count -eq 0) {
     Write-Host "WARNING: No windows asset found in release; falling back to default name"

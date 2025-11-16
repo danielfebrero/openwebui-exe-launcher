@@ -23,7 +23,11 @@ added_files = [
 # Add to binaries to encourage preservation of exec permissions
 added_binaries = []
 if Path(ollama_binary).exists():
-    added_binaries.append((ollama_binary, '.'))
+    # Place the Ollama executable in the macOS app `Contents/MacOS` folder
+    # so the runtime `get_bundled_path("ollama")` can find it at
+    # runtime. Using 'MacOS' as destination ensures PyInstaller puts the
+    # binary next to the main launcher executable.
+    added_binaries.append((ollama_binary, 'MacOS'))
 else:
     raise SystemExit(
         f"ERROR: {ollama_binary} not found. Please place the Ollama binary next to the spec before building."

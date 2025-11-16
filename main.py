@@ -110,8 +110,38 @@ def cleanup_processes():
 
 def get_ollama_binary():
     """Get platform-specific ollama binary name."""
+    # Platform-specific names
     if sys.platform == "win32":
+        # On Windows the packaged binary is `ollama.exe`
         return get_bundled_path("ollama.exe")
+
+    # macOS and Linux: prefer the located bundle path but also
+    # check for common alternate locations inside a macOS app bundle.
+    candidates = []
+    candidates.append(get_bundled_path("ollama"))
+
+    # When packaged by PyInstaller, files may be placed in different
+    # directories inside the .app bundle (Resources, Frameworks) depending
+    # on the spec and platform specifics. Check common variant locations.
+    if getattr(sys, "frozen", False) and sys.platform == "darwin":
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            base = Path(meipass)
+        else:
+            base = Path(sys.executable).parent
+
+        # Try Resources and Frameworks where packaging tools may place binaries
+        candidates.append(str(base / "Resources" / "ollama"))
+        candidates.append(str(base.parent / "Frameworks" / "ollama"))
+
+    # Return the first existing candidate (if any); otherwise return the
+    # default bundled location to preserve existing behavior and let the
+    # caller fail with a useful error if not found.
+    for c in candidates:
+        if Path(c).exists():
+            return c
+
+    # Default fallback
     return get_bundled_path("ollama")
 
 

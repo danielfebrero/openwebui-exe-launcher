@@ -100,18 +100,29 @@ if [ -d "dist/OpenWebUI-Ollama.app" ]; then
     echo "Listing Contents/MacOS inside app bundle for debug:"
     ls -la "dist/OpenWebUI-Ollama.app/Contents/MacOS" || true
     OLLAMA_PATH="dist/OpenWebUI-Ollama.app/Contents/MacOS/ollama"
+    OLLAMA_ALT_RESOURCES="dist/OpenWebUI-Ollama.app/Contents/Resources/ollama"
+    OLLAMA_ALT_FRAMEWORKS="dist/OpenWebUI-Ollama.app/Contents/Frameworks/ollama"
+
     if [ -f "$OLLAMA_PATH" ] || [ -L "$OLLAMA_PATH" ]; then
-        echo "Found bundled ollama binary inside app:" 
-        ls -la "$OLLAMA_PATH" || true
-        if [ -L "$OLLAMA_PATH" ]; then
-            echo "ollama is a symlink pointing to: $(readlink "$OLLAMA_PATH")"
-            if [ -f "$(readlink "$OLLAMA_PATH")" ]; then
+        FOUND_PATH="$OLLAMA_PATH"
+    elif [ -f "$OLLAMA_ALT_RESOURCES" ] || [ -L "$OLLAMA_ALT_RESOURCES" ]; then
+        FOUND_PATH="$OLLAMA_ALT_RESOURCES"
+    elif [ -f "$OLLAMA_ALT_FRAMEWORKS" ] || [ -L "$OLLAMA_ALT_FRAMEWORKS" ]; then
+        FOUND_PATH="$OLLAMA_ALT_FRAMEWORKS"
+    fi
+
+    if [ -n "$FOUND_PATH" ]; then
+        echo "Found bundled ollama binary inside app at: $FOUND_PATH"
+        ls -la "$FOUND_PATH" || true
+        if [ -L "$FOUND_PATH" ]; then
+            echo "ollama is a symlink pointing to: $(readlink "$FOUND_PATH")"
+            if [ -f "$(readlink "$FOUND_PATH")" ]; then
                 echo "Symlink target exists inside bundle"
             else
                 echo "Symlink target is missing or not a file"
             fi
         fi
-        file "$OLLAMA_PATH" || true
+        file "$FOUND_PATH" || true
     fi
     echo "Listing Contents/Resources inside app bundle for debug:"
     ls -la "dist/OpenWebUI-Ollama.app/Contents/Resources" || true

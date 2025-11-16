@@ -15,6 +15,7 @@ for p in "${PATTERNS[@]}"; do
     | grep '"browser_download_url"' \
     | sed -E 's/.*"([^"]+)".*/\1/' \
     | grep -iE "$p" \
+    | grep -viE 'rocm|cuda|hip|ggml|lib' \
     | head -n 1 || true)
   if [ -n "$DOWNLOAD_URL" ]; then
     echo "Selected: $DOWNLOAD_URL"
