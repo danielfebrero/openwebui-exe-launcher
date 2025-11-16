@@ -301,19 +301,24 @@ def run_webui():
             f"Build process may be incomplete."
         )
 
+    # Log the command being executed
+    webui_cmd = build_self_command([WEBUI_CHILD_FLAG])
+    logging.info(f"WebUI command: {' '.join(webui_cmd)}")
+    logging.info(
+        f"WebUI environment: DATA_DIR={env['DATA_DIR']}, OLLAMA_API_BASE={env['OLLAMA_API_BASE']}"
+    )
+
     try:
+        # Don't redirect stdout/stderr so they go to the log naturally
         webui_process = subprocess.Popen(
-            build_self_command([WEBUI_CHILD_FLAG]),
+            webui_cmd,
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
         )
     except Exception as e:
         raise RuntimeError(f"Failed to start WebUI process: {e}")
 
     # Wait for WebUI to be ready
-    print(f"Waiting for WebUI to start on port {webui_port}...")
+    logging.info(f"Waiting for WebUI to start on port {webui_port}...")
     webui_url = f"http://127.0.0.1:{webui_port}"
     for attempt in range(30):
         try:
@@ -331,16 +336,11 @@ def run_webui():
         # Check if process crashed
         if webui_process.poll() is not None:
             exit_code = webui_process.returncode
-            # Capture any error output
-            stdout, stderr = webui_process.communicate(timeout=1)
             error_msg = (
-                f"WebUI process crashed during startup (exit code {exit_code}).\n"
+                f"WebUI process exited early during startup (exit code {exit_code}).\n"
+                f"Check the log output above for details.\n"
+                f"Common issues: missing dependencies, database errors, import failures, or Ollama connection problems."
             )
-            if stderr:
-                error_msg += f"Error output:\n{stderr}\n"
-            if stdout:
-                error_msg += f"Standard output:\n{stdout}\n"
-            error_msg += "Common issues: missing dependencies, database errors, or Ollama connection problems."
             raise RuntimeError(error_msg)
 
         time.sleep(1)

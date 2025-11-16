@@ -45,18 +45,31 @@ except ImportError:
 
 def run_webui_server():
     """Launch Open WebUI with sane defaults for the portable bundle."""
+    import sys
+    import traceback
+
     port = os.environ.get("OPENWEBUI_PORT", "3000")
     host = os.environ.get("OPENWEBUI_HOST", "127.0.0.1")
+    data_dir = os.environ.get("DATA_DIR", "./data")
+
+    print(f"[WebUI Child] Starting Open WebUI server...")
+    print(f"[WebUI Child] Port: {port}, Host: {host}")
+    print(f"[WebUI Child] Data directory: {data_dir}")
+    print(f"[WebUI Child] Ollama API: {os.environ.get('OLLAMA_API_BASE', 'not set')}")
 
     # Set default arguments for open-webui serve
     sys.argv = ["open-webui", "serve", "--port", port, "--host", host]
+    print(f"[WebUI Child] Command args: {sys.argv}")
 
     try:
         if main_func is None:
             raise RuntimeError("No webui entry point found")
+        print(f"[WebUI Child] Calling main_func...")
         main_func()
+        print(f"[WebUI Child] main_func returned (should not reach here)")
     except Exception as e:
-        print(f"ERROR: Open WebUI failed to start: {e}")
+        print(f"[WebUI Child] ERROR: Open WebUI failed to start: {e}")
+        traceback.print_exc()
         sys.exit(1)
 
 
