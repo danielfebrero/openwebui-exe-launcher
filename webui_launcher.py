@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any
 
 # Set frontend build directory for bundled app
-os.environ["FRONTEND_BUILD_DIR"] = os.path.join(os.path.dirname(__file__), "build")
+if sys.platform == "darwin":
+    # macOS .app bundle: executable in Contents/MacOS, build in Contents/build
+    frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "build")
+else:
+    # Windows/Linux: executable and build in same directory
+    frontend_dir = os.path.join(os.path.dirname(__file__), "build")
+os.environ["FRONTEND_BUILD_DIR"] = frontend_dir
 
 main_func = None
 
