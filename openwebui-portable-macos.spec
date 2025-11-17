@@ -44,6 +44,7 @@ hidden_imports = [
     'sqlite3',
     'chromadb',
     'chromadb.telemetry.product.posthog',
+    'chromadb.api.rust',
     'langchain',
 ]
 
