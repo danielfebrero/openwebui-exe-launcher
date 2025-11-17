@@ -15,6 +15,7 @@ if sys.platform == "darwin":
 else:
     # Windows/Linux: executable and build in same directory
     frontend_dir = os.path.join(os.path.dirname(__file__), "build")
+os.environ["FROM_INIT_PY"] = "True"
 os.environ["FRONTEND_BUILD_DIR"] = frontend_dir
 
 main_func = None
