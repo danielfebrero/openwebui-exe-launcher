@@ -24,6 +24,21 @@ echo Installing Python dependencies...
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller
 
+REM Copy frontend build from installed open-webui package
+echo Copying frontend build from open-webui package...
+python -c "
+import open_webui
+import shutil
+import os
+frontend_path = os.path.join(os.path.dirname(open_webui.__file__), 'frontend')
+if os.path.exists(frontend_path):
+    shutil.copytree(frontend_path, 'build', dirs_exist_ok=True)
+    print('Frontend copied to build directory')
+else:
+    print('ERROR: Frontend not found in open-webui package')
+    exit(1)
+"
+
 REM Download Ollama binary if not present
 if not exist "ollama.exe" (
     echo Downloading Ollama binary...

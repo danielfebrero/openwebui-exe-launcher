@@ -17,6 +17,7 @@ ollama_binary = 'ollama.exe' if sys.platform == 'win32' else 'ollama'
 # Add data files
 added_files = [
     ('webui_launcher.py', '.'),
+    ('build', 'build'),
 ]
 
 # Only add ollama if it exists (allows build to fail gracefully).

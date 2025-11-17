@@ -8,6 +8,9 @@ import os
 from pathlib import Path
 from typing import Any
 
+# Set frontend build directory for bundled app
+os.environ["FRONTEND_BUILD_DIR"] = os.path.join(os.path.dirname(__file__), "build")
+
 main_func = None
 
 # Open WebUI is typically run via its CLI entry point defined in pyproject.toml

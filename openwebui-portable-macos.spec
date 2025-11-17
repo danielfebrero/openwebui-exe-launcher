@@ -17,6 +17,7 @@ ollama_binary = 'ollama'
 # Add data files
 added_files = [
     ('webui_launcher.py', '.'),
+    ('build', 'build'),
 ]
 
 # Only add ollama if it exists
